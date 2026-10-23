@@ -4,4 +4,10 @@ dist/
 .env.*
 .DS_Store
 .claude/settings.local.json
-.env
+.venv
+__pycache__
+.mypy_cache
+.pytest_cache
+test-results
+playwright-report
+app/static

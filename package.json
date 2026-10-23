@@ -4,7 +4,9 @@
   "type": "module",
   "scripts": {
     "setup": "uv sync",
-    "build": "bun build web/index.html --outdir app/static",
+    "pytest": "uv run pytest -q",
+    "samples":"uv run python scripts/make_samples.py",
+    "build":"bun build web/index.html --outdir app/static",
     "dev": "bun run build && DISPUTESHIELD_DEMO_MODE=1 uv run uvicorn app.main:app --reload --port 8000",
     "test": "bun run build && uv run pytest -q",
     "typecheck": "tsc -p . --noEmit && uv run mypy app tests",

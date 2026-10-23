@@ -2,10 +2,10 @@
 name = "disputeshield-ai"
 version = "0.1.0"
 requires-python = ">=3.12,<3.13"
-dependencies = ["fastapi", "uvicorn"]
+dependencies = ["fastapi", "uvicorn", "httpx"]
 
 [dependency-groups]
-dev = ["pytest", "httpx", "mypy", "hypothesis"]
+dev = ["pytest", "mypy", "hypothesis", "respx"]
 
 [tool.mypy]
 strict = true

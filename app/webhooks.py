@@ -102,9 +102,12 @@ async def paypal_webhook(request: Request) -> dict[str, Any]:
     length = request.headers.get("content-length", "")
     if length.isdigit() and int(length) > MAX_BODY:
         raise HTTPException(413, "body too large")
-    body = await request.body()
-    if len(body) > MAX_BODY:
-        raise HTTPException(413, "body too large")
+    chunks = bytearray()
+    async for chunk in request.stream():
+        chunks += chunk
+        if len(chunks) > MAX_BODY:
+            raise HTTPException(413, "body too large")
+    body = bytes(chunks)
     try:
         data = json.loads(body)
         json.dumps(data, ensure_ascii=False).encode()
@@ -122,6 +125,8 @@ async def paypal_webhook(request: Request) -> dict[str, Any]:
     webhook_id = os.environ.get("PAYPAL_WEBHOOK_ID")
     if webhook_id:
         await _verify_signature(request.headers, data, webhook_id)
+    elif os.environ.get("DISPUTESHIELD_DEMO_MODE") != "1":
+        raise HTTPException(503, "webhook verification not configured")
     result = store.record_event(
         event.id, event.event_type, _dispute_row(dispute, event.resource)
     )

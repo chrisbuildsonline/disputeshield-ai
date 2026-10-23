@@ -1,9 +1,16 @@
+import logging
+import os
 from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 
 from app.webhooks import router
+
+if os.environ.get("DISPUTESHIELD_DEMO_MODE") == "1":
+    logging.getLogger("uvicorn.error").warning(
+        "DISPUTESHIELD_DEMO_MODE=1: PayPal webhooks are accepted without signature verification"
+    )
 
 app = FastAPI(title="DisputeShield AI")
 app.include_router(router)

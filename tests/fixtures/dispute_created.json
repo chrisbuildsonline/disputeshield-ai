@@ -1,0 +1,34 @@
+{
+  "id": "WH-4M0448861G563140B-9EX36365822141321",
+  "event_type": "CUSTOMER.DISPUTE.CREATED",
+  "resource_type": "dispute",
+  "event_version": "1.0",
+  "create_time": "2018-01-12T10:41:35.000Z",
+  "summary": "A new dispute opened with Case # PP-000-042-663-135",
+  "resource": {
+    "dispute_id": "PP-000-042-663-135",
+    "reason": "MERCHANDISE_OR_SERVICE_NOT_RECEIVED",
+    "status": "OPEN",
+    "dispute_amount": {"currency_code": "USD", "value": "3.00"},
+    "create_time": "2018-01-12T10:41:35.000Z",
+    "update_time": "2018-01-12T10:41:35.000Z",
+    "dispute_channel": "INTERNAL",
+    "disputed_transactions": [
+      {
+        "seller_transaction_id": "9EA533775R2204015",
+        "seller": {"merchant_id": "RaMXXXXXXXXXX", "name": "Example Merchant"},
+        "items": [],
+        "seller_protection_eligible": true
+      }
+    ],
+    "messages": [
+      {
+        "posted_by": "BUYER",
+        "time_posted": "2018-01-12T10:41:12.000Z",
+        "content": "item not received"
+      }
+    ],
+    "links": []
+  },
+  "links": []
+}

@@ -37,7 +37,7 @@ _FILE_MAGIC: dict[str, tuple[bytes, ...]] = {
     "jpeg": (b"\xff\xd8\xff",),
     "gif": (b"GIF87a", b"GIF89a"),
 }
-_NAME_RE = re.compile(r"^[A-Za-z0-9\-_,\s]+\.[A-Za-z]+$")  # document.name pattern (PayPal schema)
+_NAME_RE = re.compile(r"[A-Za-z0-9\-_, ]+\.[A-Za-z]+")  # document.name pattern (PayPal schema)
 _CARRIERS = {  # normalised carrier text -> PayPal carrier_name enum
     "ups": "UPS",
     "unitedparcelservice": "UPS",
@@ -122,7 +122,7 @@ def _validate_files(files: list[tuple[str, bytes]]) -> None:
     names: set[str] = set()
     total = 0
     for name, data in files:
-        if not _NAME_RE.match(name) or "/" in name or "\\" in name:
+        if not _NAME_RE.fullmatch(name) or "/" in name or "\\" in name:
             raise ValueError(f"file name not allowed by PayPal: {name!r}")
         if name in names:
             raise ValueError(f"duplicate file name: {name!r}")

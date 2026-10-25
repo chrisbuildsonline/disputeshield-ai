@@ -78,6 +78,8 @@ def test_oversized_note_is_truncated_cleanly(monkeypatch: pytest.MonkeyPatch) ->
         ("a.png", b""),
         ("noext", PNG),
         ("bad/name.png", PNG),
+        ("a.png\n", PNG),  # `$` would accept a trailing newline
+        ("a\nb.png", PNG),
     ],
 )
 def test_bad_files_rejected(name: str, data: bytes) -> None:

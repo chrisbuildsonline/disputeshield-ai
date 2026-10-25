@@ -59,7 +59,7 @@ def parse_event(data: Any) -> tuple[WebhookEvent, DisputeResource | None]:
     return event, DisputeResource.model_validate(event.resource)
 
 
-def _dispute_row(res: DisputeResource, raw: dict[str, Any]) -> dict[str, Any]:
+def dispute_row(res: DisputeResource, raw: dict[str, Any], source: str) -> dict[str, Any]:
     outcome = (res.dispute_outcome or {}).get("outcome_code")
     return {
         "id": res.dispute_id,
@@ -72,6 +72,7 @@ def _dispute_row(res: DisputeResource, raw: dict[str, Any]) -> dict[str, Any]:
         "seller_response_due_date": res.seller_response_due_date,
         "outcome": outcome if isinstance(outcome, str) else None,
         "resource": json.dumps(raw),
+        "source": source,
     }
 
 
@@ -97,17 +98,21 @@ async def _verify_signature(headers: Headers, event: dict[str, Any], webhook_id:
         raise HTTPException(401, "invalid PayPal signature")
 
 
-@router.post("/api/webhooks/paypal")
-async def paypal_webhook(request: Request) -> dict[str, Any]:
+async def read_body(request: Request, limit: int) -> bytes:
     length = request.headers.get("content-length", "")
-    if length.isdigit() and int(length) > MAX_BODY:
+    if length.isdigit() and int(length) > limit:
         raise HTTPException(413, "body too large")
     chunks = bytearray()
     async for chunk in request.stream():
         chunks += chunk
-        if len(chunks) > MAX_BODY:
+        if len(chunks) > limit:
             raise HTTPException(413, "body too large")
-    body = bytes(chunks)
+    return bytes(chunks)
+
+
+@router.post("/api/webhooks/paypal")
+async def paypal_webhook(request: Request) -> dict[str, Any]:
+    body = await read_body(request, MAX_BODY)
     try:
         data = json.loads(body)
         json.dumps(data, ensure_ascii=False).encode()
@@ -128,7 +133,9 @@ async def paypal_webhook(request: Request) -> dict[str, Any]:
     elif os.environ.get("DISPUTESHIELD_DEMO_MODE") != "1":
         raise HTTPException(503, "webhook verification not configured")
     result = store.record_event(
-        event.id, event.event_type, _dispute_row(dispute, event.resource)
+        event.id,
+        event.event_type,
+        dispute_row(dispute, event.resource, "paypal" if webhook_id else "simulated"),
     )
     if result == "duplicate":
         return {"duplicate": True}

@@ -23,7 +23,7 @@ from app.scoring import INR, Dispute, ScoreResult
 logger = logging.getLogger(__name__)
 
 INPUT_PART = "input"
-FILE_PART = "evidence_file"
+FILE_PART = "file"  # parts are file1, file2, ... as in PayPal's curl guide (schema.json says "evidence-file")
 MAX_NOTES = 2000  # evidence.notes maxLength (PayPal schema)
 MAX_DOCUMENTS = 100  # evidence.documents maxItems (PayPal schema)
 MAX_FILE_BYTES = 10 * 1024 * 1024  # per file; not in the schema, PayPal's guide

@@ -23,6 +23,11 @@ def health() -> dict[str, bool]:
     return {"ok": True}
 
 
+@app.get("/api/config")
+def config() -> dict[str, bool]:
+    return {"demo_mode": os.environ.get("DISPUTESHIELD_DEMO_MODE") == "1"}
+
+
 app.mount(
     "/",
     StaticFiles(directory=Path(__file__).parent / "static", html=True),

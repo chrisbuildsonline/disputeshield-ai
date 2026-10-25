@@ -1,17 +1,22 @@
 """Evidence documents, the submit flow, the audit log and sync from PayPal."""
 
 import os
+from datetime import UTC, datetime, timedelta
+from pathlib import Path
 from typing import Any, NoReturn
+from uuid import uuid4
 
 from fastapi import APIRouter, HTTPException, Query, Request
 from fastapi.concurrency import run_in_threadpool
 from pydantic import ValidationError
 
-from app import paypal, store
+from app import paypal, scorecard, store
 from app.dossier import _validate_files, build_dossier
 from app.extract import MAX_PDF_BYTES, ExtractedEvidence, extract
-from app.scoring import Dispute, Evidence, score
+from app.scoring import INR, score
 from app.webhooks import DisputeResource, dispute_row, read_body
+
+SAMPLES = Path(__file__).parent.parent / "samples"
 
 DEMO_LABEL = "Demo mode: nothing was sent to PayPal"
 PAYPAL_LABEL = "Sent to PayPal sandbox"
@@ -45,7 +50,10 @@ async def add_document(
     dispute_id: str, request: Request, name: str = Query(max_length=255)
 ) -> dict[str, Any]:
     _require_dispute(dispute_id)
-    data = await read_body(request, MAX_PDF_BYTES)
+    return await _store_document(dispute_id, name, await read_body(request, MAX_PDF_BYTES))
+
+
+async def _store_document(dispute_id: str, name: str, data: bytes) -> dict[str, Any]:
     if not data.startswith(b"%PDF-"):
         raise HTTPException(422, "body is not a PDF")
     try:
@@ -70,20 +78,89 @@ def audit(dispute_id: str) -> list[dict[str, Any]]:
     return store.list_audit(dispute_id)
 
 
-def _merge(evs: list[ExtractedEvidence]) -> Evidence:
-    def pick(field: str) -> str | None:
-        return next((v for e in evs if (v := getattr(e, field))), None)
+_PREVIEWS: dict[tuple[Any, ...], dict[str, Any]] = {}  # dossier previews, see score_preview
 
-    return Evidence(
-        carrier=pick("carrier"),
-        tracking_number=pick("tracking_number"),
-        delivered_at=pick("delivered_at"),
-        delivered_to=pick("delivered_to"),
-        signed_by=pick("signed_by"),
-        order_id=pick("order_id"),
-        amount=pick("amount"),
-        customer_messages=tuple(m for e in evs for m in e.customer_messages),
+
+@router.get("/api/disputes/{dispute_id}/score")
+async def score_preview(dispute_id: str) -> dict[str, Any]:
+    """Score breakdown plus the dossier the submit would send.
+
+    The note may cost a Claude call, so the preview is only built here (the detail panel opening, never the
+    grid's poll) and is cached per dispute + document set: same documents, same note, no second call.
+    """
+    d = _require_dispute(dispute_id)
+    docs = store.list_documents(dispute_id, with_data=True)
+    evs = [ExtractedEvidence.model_validate(x["evidence"]) for x in docs]
+    dispute = scorecard.to_dispute(d, scorecard.billing_of(d["resource"]))
+    result = score(dispute, scorecard.merge(evs))
+    key = (dispute_id, d["reason"], d["amount_value"], tuple((x["name"], x["created_at"]) for x in docs), _use_claude())
+    preview = _PREVIEWS.get(key)
+    if preview is None:
+        try:
+            dossier = await run_in_threadpool(
+                build_dossier, dispute, evs, result, [(x["name"], x["data"]) for x in docs], use_claude=_use_claude()
+            )
+        except ValueError as e:
+            raise HTTPException(422, str(e)) from None
+        preview = {
+            "note": dossier.input["evidences"][0]["notes"],
+            "note_source": dossier.note_source,
+            "files": [n for n, _ in dossier.files],
+        }
+        if len(_PREVIEWS) >= 256:
+            _PREVIEWS.clear()
+        _PREVIEWS[key] = preview
+    points = [f.weight if f.met else 0 for f in result.factors]
+    return {
+        "dispute_id": dispute_id,
+        "probability": result.probability,
+        "base": result.probability - sum(points),
+        "factors": [
+            {
+                "label": f.label,
+                "weight": f.weight,
+                "met": f.met,
+                "points": p,
+                "reason": "Found in the uploaded evidence" if f.met else "Not found in the uploaded evidence",
+            }
+            for f, p in zip(result.factors, points, strict=True)
+        ],
+        "documents": [{"name": x["name"], "size": x["size"], "evidence": x["evidence"]} for x in docs],
+        "dossier": preview,
+    }
+
+
+def _demo_dispute() -> dict[str, Any]:
+    """A simulated 'item not received' chargeback shaped like PayPal's CUSTOMER.DISPUTE.CREATED resource."""
+    now = datetime.now(UTC)
+    stamp = now.strftime("%Y-%m-%dT%H:%M:%S.000Z")
+    return {
+        "dispute_id": f"PP-D-{uuid4().hex[:10].upper()}",
+        "reason": INR,
+        "status": "OPEN",
+        "dispute_amount": {"currency_code": "USD", "value": "49.90"},
+        "create_time": stamp,
+        "update_time": stamp,
+        "seller_response_due_date": (now + timedelta(days=7)).strftime("%Y-%m-%dT%H:%M:%S.000Z"),
+        "dispute_channel": "INTERNAL",
+        "messages": [{"posted_by": "BUYER", "time_posted": stamp, "content": "item not received"}],
+        scorecard.BILLING_KEY: "12 High Street, Leeds LS1 4AB",  # the address on the sample UPS receipt
+    }
+
+
+@router.post("/api/demo/chargeback")
+async def demo_chargeback() -> dict[str, Any]:
+    if os.environ.get("DISPUTESHIELD_DEMO_MODE") != "1":
+        raise HTTPException(404, "not found")
+    resource = _demo_dispute()
+    res = DisputeResource.model_validate(resource)
+    store.record_event(
+        f"DEMO-{uuid4().hex}", "CUSTOMER.DISPUTE.CREATED", dispute_row(res, resource, "simulated")
     )
+    store.add_audit(res.dispute_id, "simulated_chargeback", {"reason": res.reason})
+    receipt = SAMPLES / "ups_receipt.pdf"
+    await _store_document(res.dispute_id, receipt.name, receipt.read_bytes())
+    return _require_dispute(res.dispute_id)
 
 
 @router.post("/api/disputes/{dispute_id}/submit")
@@ -101,8 +178,8 @@ async def submit(dispute_id: str) -> dict[str, Any]:
     dossier_input: dict[str, Any] | None = None
     try:
         evs = [ExtractedEvidence.model_validate(x["evidence"]) for x in docs]
-        dispute = Dispute(reason=d["reason"] or "other", amount=d["amount_value"] or "")
-        result = score(dispute, _merge(evs))
+        dispute = scorecard.to_dispute(d, scorecard.billing_of(d["resource"]))
+        result = score(dispute, scorecard.merge(evs))
         dossier = await run_in_threadpool(
             build_dossier, dispute, evs, result, [(x["name"], x["data"]) for x in docs], use_claude=_use_claude()
         )

@@ -17,6 +17,7 @@ UPS_LINES = [
     "Delivered To: 12 High Street, Leeds LS1 4AB",
     "Signed By: J Smith",
     "Left At: Front door",
+    "Amount Paid: USD 49.90",
 ]
 
 CRM_LINES = [

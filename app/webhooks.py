@@ -7,7 +7,8 @@ from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 from starlette.datastructures import Headers
 
-from app import paypal, store
+from app import paypal, scorecard, store
+from app.extract import ExtractedEvidence
 
 MAX_BODY = 1024 * 1024
 DISPUTE_EVENTS = {
@@ -149,7 +150,18 @@ async def paypal_webhook(request: Request) -> dict[str, Any]:
 
 @router.get("/api/disputes")
 def list_disputes() -> list[dict[str, Any]]:
-    return store.list_disputes()
+    """Each row gets win_probability: null until a document is uploaded (never calls Claude)."""
+    evidence = store.evidence_by_dispute()
+    rows = store.list_disputes()
+    for row in rows:
+        docs = evidence.get(row["id"])
+        billing = row.pop("billing_address")
+        row["win_probability"] = (
+            scorecard.score_dispute(row, billing, [ExtractedEvidence.model_validate(x) for x in docs]).probability
+            if docs
+            else None
+        )
+    return rows
 
 
 @router.get("/api/disputes/{dispute_id}")

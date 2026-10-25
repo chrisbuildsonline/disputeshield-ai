@@ -233,9 +233,19 @@ def list_audit(dispute_id: str) -> list[dict[str, Any]]:
 def list_disputes() -> list[dict[str, Any]]:
     with closing(_connect()) as conn:
         rows = conn.execute(
-            f"SELECT {SUMMARY_COLUMNS} FROM disputes ORDER BY update_time DESC, id"
+            f"SELECT {SUMMARY_COLUMNS}, json_extract(resource, '$.buyer_billing_address') AS billing_address "
+            "FROM disputes ORDER BY update_time DESC, id"
         ).fetchall()
     return [dict(r) for r in rows]
+
+
+def evidence_by_dispute() -> dict[str, list[dict[str, Any]]]:
+    """Every dispute's extracted evidence in one query (for the grid's win %)."""
+    out: dict[str, list[dict[str, Any]]] = {}
+    with closing(_connect()) as conn:
+        for r in conn.execute("SELECT dispute_id, evidence FROM documents ORDER BY id"):
+            out.setdefault(r["dispute_id"], []).append(json.loads(r["evidence"]))
+    return out
 
 
 def get_dispute(dispute_id: str) -> dict[str, Any] | None:

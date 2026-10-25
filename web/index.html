@@ -4,10 +4,52 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>DisputeShield AI</title>
+    <link
+      rel="icon"
+      href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cpath d='M16 2 4 7v8c0 7 5 13 12 15 7-2 12-8 12-15V7z' fill='%234338ca'/%3E%3Cpath d='m10.5 16 4 4 7-8' fill='none' stroke='white' stroke-width='3'/%3E%3C/svg%3E"
+    />
+    <link rel="stylesheet" href="./src/styles.css" />
   </head>
   <body>
-    <h1>DisputeShield AI</h1>
-    <p id="status">Checking API...</p>
+    <header class="top">
+      <div class="brand">
+        <h1>DisputeShield AI</h1>
+        <p class="tagline">Win PayPal disputes with evidence, scored and sent in one click.</p>
+      </div>
+      <div class="top-actions">
+        <span id="demo-badge" class="badge badge-demo" hidden>Demo mode</span>
+        <button id="simulate-btn" class="btn btn-primary" type="button" hidden>Simulate chargeback</button>
+      </div>
+    </header>
+
+    <main class="stage">
+      <h2 class="sr-only">Disputes</h2>
+      <div class="grid-wrap">
+        <div id="grid" role="region" aria-label="Disputes table"></div>
+        <div id="empty" class="empty" hidden>
+          <h3>No disputes yet</h3>
+          <p>When a customer opens a chargeback, it shows up here with a win score and ready evidence.</p>
+          <p id="empty-hint" class="muted" hidden>Press "Simulate chargeback" to see how it works.</p>
+        </div>
+      </div>
+
+      <aside id="detail" class="detail" role="dialog" aria-modal="false" aria-labelledby="detail-title" tabindex="-1" hidden>
+        <div class="detail-head">
+          <div>
+            <h2 id="detail-title"></h2>
+            <p id="detail-sub" class="muted"></p>
+          </div>
+          <button id="detail-close" class="btn" type="button">Close <kbd>Esc</kbd></button>
+        </div>
+        <div id="detail-body" class="detail-body"></div>
+        <div class="detail-foot">
+          <div id="submit-result" role="status" aria-live="polite"></div>
+          <button id="submit-btn" class="btn btn-primary btn-wide" type="button" disabled>Submit evidence</button>
+        </div>
+      </aside>
+    </main>
+
+    <footer class="foot"><span id="status" role="status">Checking API...</span></footer>
     <script type="module" src="./src/main.ts"></script>
   </body>
 </html>

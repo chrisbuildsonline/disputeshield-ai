@@ -5,8 +5,8 @@
   "scripts": {
     "setup": "uv sync",
     "pytest": "uv run pytest -q",
-    "samples":"uv run python scripts/make_samples.py",
-    "build":"bun build web/index.html --outdir app/static",
+    "samples": "uv run python scripts/make_samples.py",
+    "build": "bun build web/index.html --outdir app/static",
     "dev": "bun run build && DISPUTESHIELD_DEMO_MODE=1 uv run uvicorn app.main:app --reload --port 8000",
     "test": "bun run build && uv run pytest -q",
     "typecheck": "tsc -p . --noEmit && uv run mypy app tests",
@@ -17,5 +17,8 @@
     "@playwright/test": "^1.50.0",
     "@types/bun": "latest",
     "typescript": "^5.7.0"
+  },
+  "dependencies": {
+    "ag-grid-community": "^36.2.0"
   }
 }

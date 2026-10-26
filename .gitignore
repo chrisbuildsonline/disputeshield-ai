@@ -12,3 +12,6 @@ test-results
 playwright-report
 app/static
 data/
+PLAN.md
+CLAUDE.md
+.omc/

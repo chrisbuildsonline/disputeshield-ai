@@ -7,10 +7,25 @@ import {
   type GridApi,
   type ICellRendererParams,
 } from "ag-grid-community";
-import { api, ApiError, esc, money, needsAction, reasonLabel, statusLabel, timeLeft, type Autopilot, type Dispute } from "./api";
+import {
+  api,
+  ApiError,
+  esc,
+  handleUnauthorized,
+  money,
+  needsAction,
+  reasonLabel,
+  setToken,
+  statusLabel,
+  takeTokenFromHash,
+  timeLeft,
+  type Autopilot,
+  type Dispute,
+} from "./api";
 import { createDetail } from "./detail";
 
 ModuleRegistry.registerModules([AllCommunityModule]);
+takeTokenFromHash();
 
 const POLL_MS = 3000;
 const byId = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
@@ -18,6 +33,17 @@ const byId = <T extends HTMLElement>(id: string) => document.getElementById(id) 
 const statusEl = byId("status");
 const simulateBtn = byId<HTMLButtonElement>("simulate-btn");
 const emptyEl = byId("empty");
+
+const gate = byId("token-gate");
+const gateOpen = () => !gate.hidden;
+let tokenTried = false;
+
+handleUnauthorized(() => {
+  gate.hidden = false;
+  document.body.classList.add("locked");
+  statusEl.textContent = "Operator token needed";
+  byId("token-error").textContent = tokenTried ? "That token was not accepted." : "";
+});
 
 const badge = (text: string, cls: string) => `<span class="badge ${cls}">${esc(text)}</span>`;
 
@@ -117,6 +143,7 @@ function paintEmpty(): void {
 }
 
 async function refresh(): Promise<void> {
+  if (gateOpen()) return; // wait for a token instead of polling a closed door
   try {
     const next = await api<Dispute[]>("/api/disputes");
     statusEl.textContent = "API online";
@@ -148,7 +175,7 @@ simulateBtn.addEventListener("click", async () => {
       gridApi.setFocusedCell(node.rowIndex, "id");
     }
   } catch {
-    statusEl.textContent = "Could not create the demo chargeback. Is demo mode on?";
+    if (!gateOpen()) statusEl.textContent = "Could not create the demo chargeback. Is demo mode on?";
   } finally {
     simulateBtn.disabled = false;
   }
@@ -165,18 +192,36 @@ async function saveAutopilot(): Promise<void> {
     apOn.checked = s.enabled;
     apThreshold.value = String(s.threshold);
   } catch (e) {
+    if (gateOpen()) return;
     apError.textContent = e instanceof ApiError && e.status === 422 ? "Threshold must be a whole number from 0 to 100." : "Could not save the autopilot setting.";
   }
 }
 apOn.addEventListener("change", () => void saveAutopilot());
 apThreshold.addEventListener("change", () => void saveAutopilot());
-try {
-  const s = await api<Autopilot>("/api/autopilot");
-  apOn.checked = s.enabled;
-  apThreshold.value = String(s.threshold);
-} catch {
-  apError.textContent = "Could not load the autopilot setting.";
+
+async function loadAutopilot(): Promise<void> {
+  try {
+    const s = await api<Autopilot>("/api/autopilot");
+    apOn.checked = s.enabled;
+    apThreshold.value = String(s.threshold);
+  } catch {
+    if (!gateOpen()) apError.textContent = "Could not load the autopilot setting.";
+  }
 }
+
+byId("token-form").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const input = byId<HTMLInputElement>("token-input");
+  setToken(input.value);
+  input.value = "";
+  tokenTried = true;
+  gate.hidden = true;
+  document.body.classList.remove("locked");
+  statusEl.textContent = "Checking API...";
+  await loadAutopilot();
+  await refresh();
+  if (!gateOpen()) tokenTried = false;
+});
 
 try {
   const cfg = await api<{ demo_mode: boolean }>("/api/config");
@@ -185,6 +230,7 @@ try {
 } catch {
   /* the poll below reports the outage */
 }
+await loadAutopilot();
 await refresh();
 setInterval(() => void refresh(), POLL_MS);
 

@@ -75,17 +75,42 @@ export class ApiError extends Error {
   }
 }
 
+const TOKEN_KEY = "disputeshield.token";
+let token = localStorage.getItem(TOKEN_KEY) ?? "";
+let onUnauthorized: () => void = () => {};
+
+export function setToken(value: string): void {
+  token = value.trim();
+  localStorage.setItem(TOKEN_KEY, token);
+}
+
+export function handleUnauthorized(callback: () => void): void {
+  onUnauthorized = callback;
+}
+
+/** The server prints a link ending in #token=...: keep the token and take it out of the address bar. */
+export function takeTokenFromHash(): void {
+  const params = new URLSearchParams(location.hash.slice(1));
+  const fromLink = params.get("token");
+  if (fromLink === null) return;
+  setToken(fromLink);
+  params.delete("token");
+  const rest = params.toString();
+  history.replaceState(null, "", location.pathname + location.search + (rest ? `#${rest}` : ""));
+}
+
 export async function api<T>(path: string, method = "GET", json?: unknown): Promise<T> {
+  const headers: Record<string, string> = {};
+  if (token) headers.authorization = `Bearer ${token}`;
+  if (json !== undefined) headers["content-type"] = "application/json";
   let res: Response;
   try {
-    res = await fetch(
-      path,
-      json === undefined ? { method } : { method, headers: { "content-type": "application/json" }, body: JSON.stringify(json) },
-    );
+    res = await fetch(path, { method, headers, body: json === undefined ? undefined : JSON.stringify(json) });
   } catch {
     throw new ApiError(0, "Could not reach the server.");
   }
   const body: unknown = await res.json().catch(() => null);
+  if (res.status === 401) onUnauthorized();
   if (!res.ok) {
     const detail = body && typeof body === "object" && "detail" in body ? (body as { detail: unknown }).detail : body;
     throw new ApiError(res.status, detail);

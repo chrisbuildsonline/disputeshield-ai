@@ -27,6 +27,17 @@
       </div>
     </header>
 
+    <section id="token-gate" class="gate banner banner-info" hidden>
+      <h2 id="token-title">Operator token needed</h2>
+      <p>The server prints a link with the token when it starts. Open that link, or paste the token here.</p>
+      <form id="token-form" class="gate-form">
+        <label for="token-input">Token</label>
+        <input id="token-input" type="password" autocomplete="off" required />
+        <button class="btn btn-primary" type="submit">Use token</button>
+      </form>
+      <p id="token-error" class="urgent" role="alert"></p>
+    </section>
+
     <main class="stage">
       <h2 class="sr-only">Disputes</h2>
       <div class="grid-wrap">

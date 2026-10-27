@@ -15,7 +15,7 @@ function watchErrors(page: Page): string[] {
 
 test("simulate a chargeback, review the evidence and submit it", async ({ page }) => {
   const errors = watchErrors(page);
-  await page.goto("/");
+  await page.goto("/#token=e2e-token");
 
   await expect(page.getByRole("heading", { name: "DisputeShield AI" })).toBeVisible();
   await expect(page.getByText("Demo mode", { exact: true })).toBeVisible();

@@ -28,7 +28,7 @@ async function simulate(page: Page): Promise<string> {
 
 test("autopilot sends a chargeback on its own, and flags the next one when switched off", async ({ page }) => {
   const errors = watchErrors(page);
-  await page.goto("/");
+  await page.goto("/#token=e2e-token");
   const toggle = page.getByRole("switch", { name: "Autopilot" });
   const threshold = page.getByLabel("Threshold");
   await expect(toggle).not.toBeChecked();

@@ -7,7 +7,7 @@ test("home loads and shows API online", async ({ page }) => {
   });
   page.on("pageerror", (e) => errors.push(e.message));
 
-  await page.goto("/");
+  await page.goto("/#token=e2e-token");
   await expect(page).toHaveTitle("DisputeShield AI");
   await expect(page.getByRole("heading", { name: "DisputeShield AI" })).toBeVisible();
   await expect(page.locator("#status")).toHaveText("API online");

@@ -16,7 +16,8 @@ const port = process.env.E2E_PORT || "8765";
 export default defineConfig({
   testDir: "e2e",
   workers: 1, // one shared database, so tests run one after another
-  use: { baseURL: `http://127.0.0.1:${port}` },
+  // the request fixture (and the page) send the token too; the token spec clears this to act like a stranger
+  use: { baseURL: `http://127.0.0.1:${port}`, extraHTTPHeaders: { Authorization: "Bearer e2e-token" } },
   projects: [{ name: "chromium", use: { ...devices["Desktop Chrome"] } }],
   webServer: {
     command: `bun run build && uv run uvicorn app.main:app --port ${port}`,
@@ -25,6 +26,7 @@ export default defineConfig({
     env: {
       DISPUTESHIELD_DEMO_MODE: "1",
       DISPUTESHIELD_DB: db,
+      DISPUTESHIELD_OPERATOR_TOKEN: "e2e-token",
       // regex and template paths only: the e2e run never calls a model or PayPal
       DISPUTESHIELD_LLM: "off",
       ANTHROPIC_API_KEY: "",

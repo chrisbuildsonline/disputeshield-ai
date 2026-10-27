@@ -118,8 +118,19 @@ def test_link_is_logged(caplog: pytest.LogCaptureFixture, monkeypatch: pytest.Mo
     monkeypatch.setenv("PORT", "9123")
     with caplog.at_level(logging.WARNING, logger="uvicorn.error"):
         auth.log_link()
-    assert f"Operator console: http://localhost:9123/#token={TOKEN}" in caplog.text
+    assert "Operator console: http://localhost:9123/ (token from DISPUTESHIELD_OPERATOR_TOKEN)" in caplog.text
+    assert TOKEN not in caplog.text
     assert caplog.records[-1].levelno == logging.WARNING
+
+
+def test_generated_token_link_is_logged(caplog: pytest.LogCaptureFixture, monkeypatch: pytest.MonkeyPatch) -> None:
+    from app import auth
+
+    monkeypatch.delenv("DISPUTESHIELD_OPERATOR_TOKEN")
+    monkeypatch.setenv("PORT", "9123")
+    with caplog.at_level(logging.WARNING, logger="uvicorn.error"):
+        auth.log_link()
+    assert f"Operator console: http://localhost:9123/#token={auth.operator_token()}" in caplog.text
 
 
 def test_link_defaults_to_port_8000(caplog: pytest.LogCaptureFixture, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -128,4 +139,4 @@ def test_link_defaults_to_port_8000(caplog: pytest.LogCaptureFixture, monkeypatc
     monkeypatch.delenv("PORT", raising=False)
     with caplog.at_level(logging.WARNING, logger="uvicorn.error"):
         auth.log_link()
-    assert f"http://localhost:8000/#token={TOKEN}" in caplog.text
+    assert "http://localhost:8000/ (token from DISPUTESHIELD_OPERATOR_TOKEN)" in caplog.text

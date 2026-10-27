@@ -25,7 +25,11 @@ def operator_token() -> str:
 
 def log_link() -> None:
     port = os.environ.get("PORT") or "8000"
-    logging.getLogger("uvicorn.error").warning("Operator console: http://localhost:%s/#token=%s", port, operator_token())
+    log = logging.getLogger("uvicorn.error")
+    if os.environ.get("DISPUTESHIELD_OPERATOR_TOKEN", "").strip():
+        log.warning("Operator console: http://localhost:%s/ (token from DISPUTESHIELD_OPERATOR_TOKEN)", port)
+    else:
+        log.warning("Operator console: http://localhost:%s/#token=%s", port, operator_token())
 
 
 async def require_token(request: Request, call_next: RequestResponseEndpoint) -> Response:

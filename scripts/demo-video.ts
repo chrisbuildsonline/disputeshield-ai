@@ -108,8 +108,8 @@ body{margin:0;height:100vh;background:#0a1220;color:var(--ink);font:19px/1.45 In
 body::before{content:'';position:fixed;inset:0;background:radial-gradient(ellipse 60% 50% at 85% 0%,#12305c 0%,transparent 70%),radial-gradient(ellipse 50% 40% at 0% 100%,#0b2f3a 0%,transparent 70%);z-index:-1}
 .stage{position:absolute;inset:0;padding:40px 56px 56px;display:flex;flex-direction:column;animation:enter .7s cubic-bezier(.2,.7,.2,1) both}
 @keyframes enter{from{opacity:0;transform:translateY(14px)}}
-.eyebrow{font:600 13px Inter;letter-spacing:.16em;text-transform:uppercase;color:var(--a1);margin-bottom:6px}
-h1{font:700 36px/1.15 Inter;letter-spacing:-.02em;margin:0 0 8px}
+.eyebrow{font:600 13px Inter,system-ui,sans-serif;letter-spacing:.16em;text-transform:uppercase;color:var(--a1);margin-bottom:6px}
+h1{font:700 36px/1.15 Inter,system-ui,sans-serif;letter-spacing:-.02em;margin:0 0 8px}
 .lead{color:var(--dim);margin:0 0 22px;font-size:18px}
 .card{background:#111c30;border:1px solid var(--line);border-radius:16px;padding:16px 20px}
 .card b{font-weight:600}
@@ -118,7 +118,7 @@ h1{font:700 36px/1.15 Inter;letter-spacing:-.02em;margin:0 0 8px}
 .mono{font:15px/1.6 ui-monospace,'JetBrains Mono',monospace}
 .chip{display:inline-block;font:500 13px ui-monospace,monospace;background:#10264a;color:#bfdbfe;border:1px solid #1e4a8a;border-radius:8px;padding:2px 8px;margin:4px 4px 0 0}
 .dim{color:var(--dim);font-size:16px}
-.big{font:700 64px/1 Inter;letter-spacing:-.03em;color:var(--ok)}
+.big{font:700 64px/1 Inter,system-ui,sans-serif;letter-spacing:-.03em;color:var(--ok)}
 `;
   const slide = (body: string) => `<!doctype html><html><head><meta charset="utf-8"><style>${CSS}</style></head><body><div class="stage">${body}</div></body></html>`;
   const card = (d: number, inner: string) => `<div class="card in" style="animation-delay:${d}s">${inner}</div>`;

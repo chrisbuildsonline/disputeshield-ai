@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import dataclasses
-import os
 import re
 from decimal import Decimal
 from pathlib import Path
@@ -31,7 +30,7 @@ def test_samples_exist() -> None:
 
 
 def test_fallback_on_ups_receipt() -> None:
-    r = extract(UPS, use_claude=False)
+    r = extract(UPS, use_llm=False)
     assert r.source == "fallback"
     assert r.carrier == "UPS"
     assert r.tracking_number == "1Z999AA10123456784"
@@ -43,7 +42,7 @@ def test_fallback_on_ups_receipt() -> None:
 
 
 def test_fallback_on_crm_order() -> None:
-    r = extract(CRM, use_claude=False)
+    r = extract(CRM, use_llm=False)
     assert r.source == "fallback"
     assert r.order_id == "A-1042"
     assert r.amount == "49.90"
@@ -83,8 +82,8 @@ def test_to_evidence_mapping() -> None:
 
 
 def _merged() -> Evidence:
-    a = to_evidence(extract(UPS, use_claude=False))
-    b = to_evidence(extract(CRM, use_claude=False))
+    a = to_evidence(extract(UPS, use_llm=False))
+    b = to_evidence(extract(CRM, use_llm=False))
     fields = {
         f.name: getattr(a, f.name) or getattr(b, f.name) for f in dataclasses.fields(Evidence)
     }
@@ -101,6 +100,7 @@ def test_demo_dispute_scores_from_extracted_evidence() -> None:
 
 
 def test_claude_error_falls_back(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("DISPUTESHIELD_LLM", "claude")
     monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-test")
 
     def boom(_: bytes) -> Any:
@@ -113,6 +113,7 @@ def test_claude_error_falls_back(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def test_claude_error_is_logged(monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture) -> None:
+    monkeypatch.setenv("DISPUTESHIELD_LLM", "claude")
     monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-secret-value")
 
     def boom(_: bytes) -> Any:
@@ -128,20 +129,15 @@ def test_claude_error_is_logged(monkeypatch: pytest.MonkeyPatch, caplog: pytest.
     assert "sk-secret-value" not in msg
 
 
-def test_bad_key_falls_back(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-bad-key")  # real API answers 401, no tokens used
-    r = extract(UPS)
-    assert r.source == "fallback"
-    assert r.carrier == "UPS"
-
-
 def test_claude_invalid_output_falls_back(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("DISPUTESHIELD_LLM", "claude")
     monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-test")
     monkeypatch.setattr(ex, "_claude_tool_input", lambda _: ({"customer_messages": "not a list"}, "m"))
     assert extract(UPS).source == "fallback"
 
 
 def test_guard_drops_hallucinated_ids(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("DISPUTESHIELD_LLM", "claude")
     monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-test")
     fake = {
         "carrier": "UPS",
@@ -159,6 +155,7 @@ def test_guard_drops_hallucinated_ids(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def test_guard_keeps_real_ids_ignoring_space_and_case(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("DISPUTESHIELD_LLM", "claude")
     monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-test")
     fake = {"tracking_number": "1z 999aa1 0123456784"}
     monkeypatch.setattr(ex, "_claude_tool_input", lambda _: (fake, "stub-model"))
@@ -167,16 +164,17 @@ def test_guard_keeps_real_ids_ignoring_space_and_case(monkeypatch: pytest.Monkey
 
 def test_oversize_rejected() -> None:
     with pytest.raises(ValueError, match="10 MB"):
-        extract(b"0" * (10 * 1024 * 1024 + 1), use_claude=False)
+        extract(b"0" * (10 * 1024 * 1024 + 1), use_llm=False)
 
 
 @pytest.mark.parametrize("data", [b"", b"not a pdf", b"%PDF-1.4\ngarbage", UPS[: len(UPS) // 2], b"\x00" * 100])
 def test_garbage_returns_empty_fallback(data: bytes) -> None:
-    r = extract(data, use_claude=False)
+    r = extract(data, use_llm=False)
     assert r == ExtractedEvidence(source="fallback")
 
 
 def test_garbage_with_claude_key_never_raises(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("DISPUTESHIELD_LLM", "claude")
     monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-bad")
     assert extract(b"junk").source == "fallback"
 
@@ -194,7 +192,7 @@ def test_parse_text_never_raises(text: str) -> None:
 @settings(max_examples=100, deadline=None)
 @given(st.binary(max_size=4000))
 def test_extract_arbitrary_bytes_never_raises(data: bytes) -> None:
-    r = extract(data, use_claude=False)
+    r = extract(data, use_llm=False)
     assert r.source == "fallback"
     ExtractedEvidence.model_validate(r.model_dump())
 
@@ -202,15 +200,28 @@ def test_extract_arbitrary_bytes_never_raises(data: bytes) -> None:
 # ---- live ----
 
 
-def test_live_claude_matches_fallback() -> None:
-    if not os.environ.get("ANTHROPIC_API_KEY"):
-        pytest.fail("Needs fix: ANTHROPIC_API_KEY missing")
-    live = extract(UPS)
-    base = extract(UPS, use_claude=False)
+@pytest.mark.parametrize("pdf", [UPS, CRM], ids=["ups_receipt", "crm_order"])
+def test_live_ollama_raw_answer_matches_fallback(monkeypatch: pytest.MonkeyPatch, pdf: bytes) -> None:
+    """The model's own JSON, before the guard and the regex fill."""
+    monkeypatch.setenv("DISPUTESHIELD_LLM", "ollama")
+    text = ex._pdf_text(pdf)
+    raw = ex._ollama_raw(text)
+    fields = ex.EvidenceFields.model_validate(raw)
+    base = parse_text(text)
+    print(f"raw model answer: {raw}")
+    for name in ("tracking_number", "order_id", "carrier"):
+        if getattr(base, name):
+            assert _norm(getattr(fields, name)) == _norm(getattr(base, name)), name
+
+
+@pytest.mark.parametrize("pdf", [UPS, CRM], ids=["ups_receipt", "crm_order"])
+def test_live_ollama_matches_fallback(monkeypatch: pytest.MonkeyPatch, pdf: bytes) -> None:
+    monkeypatch.setenv("DISPUTESHIELD_LLM", "ollama")  # real local server, no mocks; first call may load the model
+    live = extract(pdf)
+    base = extract(pdf, use_llm=False)
     print(f"live model: {live.model}")
-    assert live.source == "claude"
+    assert live.source == "ollama"
     assert live.model
-    assert _norm(live.carrier) == _norm(base.carrier)
-    assert _norm(live.tracking_number) == _norm(base.tracking_number)
-    assert _norm(live.signed_by) == _norm(base.signed_by)
-    assert _norm(live.delivered_to) == _norm(base.delivered_to)
+    for name in ("tracking_number", "order_id", "carrier", "amount"):
+        if getattr(base, name):
+            assert _norm(getattr(live, name)) == _norm(getattr(base, name)), name

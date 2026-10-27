@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import logging
-import os
 from decimal import Decimal
 from pathlib import Path
 from typing import Any
@@ -24,18 +23,18 @@ PNG = b"\x89PNG\r\n\x1a\n" + b"0" * 20
 
 
 def _sample_evidence() -> list[ExtractedEvidence]:
-    return [extract(UPS, use_claude=False), extract(CRM, use_claude=False)]
+    return [extract(UPS, use_llm=False), extract(CRM, use_llm=False)]
 
 
 def _build(
     evs: list[ExtractedEvidence] | None = None,
     docs: list[tuple[str, bytes]] | None = None,
     dispute: Dispute = DISPUTE,
-    use_claude: bool = False,
+    use_llm: bool = False,
 ) -> Dossier:
     evs = _sample_evidence() if evs is None else evs
     result = score(dispute, to_evidence(evs[0])) if evs else score(dispute, to_evidence(ExtractedEvidence()))
-    return build_dossier(dispute, evs, result, docs or [], use_claude=use_claude)
+    return build_dossier(dispute, evs, result, docs or [], use_llm=use_llm)
 
 
 # ---- schema and limits ----
@@ -60,10 +59,11 @@ def test_no_documents_key_when_no_files() -> None:
 
 
 def test_oversized_note_is_truncated_cleanly(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("DISPUTESHIELD_LLM", "claude")
     monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-test")
     long_note = ("Delivered to the billing address. " * 200).strip()
     monkeypatch.setattr(ds, "_claude_note", lambda *_: (long_note, "m"))
-    d = _build(use_claude=True)
+    d = _build(use_llm=True)
     notes = d.input["evidences"][0]["notes"]
     assert d.note_source == "claude"
     assert len(notes) <= MAX_NOTES
@@ -209,16 +209,18 @@ def test_template_passes_fact_check_on_samples() -> None:
 
 
 def test_hallucinating_claude_falls_back(monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture) -> None:
+    monkeypatch.setenv("DISPUTESHIELD_LLM", "claude")
     monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-test")
     monkeypatch.setattr(ds, "_claude_note", lambda *_: ("Tracking 1ZFAKE0000000000 was delivered.", "stub"))
     with caplog.at_level("WARNING", logger="app.dossier"):
-        d = _build(use_claude=True)
+        d = _build(use_llm=True)
     assert d.note_source == "template"
     assert "1ZFAKE" not in d.input["evidences"][0]["notes"]
     assert any("fact check" in r.getMessage() for r in caplog.records)
 
 
 def test_claude_error_falls_back(monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture) -> None:
+    monkeypatch.setenv("DISPUTESHIELD_LLM", "claude")
     monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-secret-value")
 
     def boom(*_: Any) -> Any:
@@ -226,22 +228,24 @@ def test_claude_error_falls_back(monkeypatch: pytest.MonkeyPatch, caplog: pytest
 
     monkeypatch.setattr(ds, "_claude_note", boom)
     with caplog.at_level("WARNING", logger="app.dossier"):
-        d = _build(use_claude=True)
+        d = _build(use_llm=True)
     assert d.note_source == "template"
     msgs = " ".join(r.getMessage() for r in caplog.records)
     assert "upstream exploded" in msgs and "sk-secret-value" not in msgs
 
 
 def test_no_key_uses_template(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("DISPUTESHIELD_LLM", "claude")
     monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
     monkeypatch.setattr(ds, "_claude_note", lambda *_: pytest.fail("should not be called"))
-    assert _build(use_claude=True).note_source == "template"
+    assert _build(use_llm=True).note_source == "template"
 
 
 def test_good_claude_note_is_used(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("DISPUTESHIELD_LLM", "claude")
     monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-test")
     monkeypatch.setattr(ds, "_claude_note", lambda *_: ("Order A-1042 was delivered to the billing address.", "stub-model"))
-    d = _build(use_claude=True)
+    d = _build(use_llm=True)
     assert d.note_source == "claude" and d.note_model == "stub-model"
     assert d.input["evidences"][0]["notes"].startswith("Order A-1042")
 
@@ -290,17 +294,13 @@ def test_build_never_raises_and_template_passes(evs: list[ExtractedEvidence], re
 # ---- live ----
 
 
-def test_live_claude_note_for_ups_receipt(caplog: pytest.LogCaptureFixture) -> None:
-    if not os.environ.get("ANTHROPIC_API_KEY"):
-        pytest.fail("Needs fix: ANTHROPIC_API_KEY missing")
+def test_live_ollama_note_for_ups_receipt(monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture) -> None:
+    monkeypatch.setenv("DISPUTESHIELD_LLM", "ollama")  # real local server, no mocks
     evs = _sample_evidence()
     with caplog.at_level(logging.WARNING, logger="app.dossier"):
-        d = _build(evs, docs=[("ups_receipt.pdf", UPS)], use_claude=True)
+        d = _build(evs, docs=[("ups_receipt.pdf", UPS)], use_llm=True)
     notes = d.input["evidences"][0]["notes"]
-    print(f"note_source={d.note_source} model={d.note_model}\n{notes}")
-    assert d.note_source in ("claude", "template")
-    if d.note_source == "claude":
-        assert d.note_model
-    else:
-        assert any(r.name == "app.dossier" and r.levelno == logging.WARNING for r in caplog.records)
+    print(f"note_source={d.note_source} model={d.note_model}\n{notes}\n{d.notes}")
+    assert d.note_source == "ollama", d.notes
+    assert d.note_model
     assert fact_check(notes, DISPUTE, evs) == []

@@ -5,6 +5,8 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
+import pytest
+
 
 def _load_env(path: Path) -> None:
     if not path.is_file():
@@ -21,3 +23,9 @@ def _load_env(path: Path) -> None:
 
 
 _load_env(Path(__file__).resolve().parent.parent / ".env")
+
+
+@pytest.fixture(autouse=True)
+def llm_off(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Fallbacks only by default; tests that want a model set DISPUTESHIELD_LLM themselves."""
+    monkeypatch.setenv("DISPUTESHIELD_LLM", "off")

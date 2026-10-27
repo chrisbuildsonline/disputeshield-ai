@@ -15,7 +15,10 @@
     "typecheck": "tsc -p . --noEmit && uv run mypy app tests",
     "e2e": "playwright test",
     "e2e:alt": "E2E_PORT=8766 playwright test",
-    "e2e:install": "playwright install chromium"
+    "e2e:install": "playwright install chromium",
+    "docker:test": "bash scripts/docker-test.sh",
+    "docker:e2e": "bash scripts/docker-e2e.sh",
+    "docker:smoke": "bash scripts/docker-smoke.sh"
   },
   "devDependencies": {
     "@playwright/test": "^1.50.0",

@@ -6,11 +6,11 @@ from pathlib import Path
 from typing import Any, NoReturn
 from uuid import uuid4
 
-from fastapi import APIRouter, HTTPException, Query, Request
+from fastapi import APIRouter, BackgroundTasks, HTTPException, Query, Request
 from fastapi.concurrency import run_in_threadpool
 from pydantic import ValidationError
 
-from app import llm, paypal, scorecard, store
+from app import autopilot, llm, paypal, scorecard, store
 from app.dossier import _validate_files, build_dossier
 from app.extract import MAX_PDF_BYTES, ExtractedEvidence, extract
 from app.scoring import INR, score
@@ -47,10 +47,13 @@ def _refuse(dispute_id: str, code: int, reason: str) -> NoReturn:
 
 @router.post("/api/disputes/{dispute_id}/documents")
 async def add_document(
-    dispute_id: str, request: Request, name: str = Query(max_length=255)
+    dispute_id: str, request: Request, background: BackgroundTasks, name: str = Query(max_length=255)
 ) -> dict[str, Any]:
     _require_dispute(dispute_id)
-    return await _store_document(dispute_id, name, await read_body(request, MAX_PDF_BYTES))
+    stored = await _store_document(dispute_id, name, await read_body(request, MAX_PDF_BYTES))
+    if autopilot.enabled() and not store.has_live_submission(dispute_id):
+        background.add_task(autopilot.run, dispute_id)  # new evidence may clear an earlier flag
+    return stored
 
 
 async def _store_document(dispute_id: str, name: str, data: bytes) -> dict[str, Any]:
@@ -150,7 +153,7 @@ def _demo_dispute() -> dict[str, Any]:
 
 
 @router.post("/api/demo/chargeback")
-async def demo_chargeback() -> dict[str, Any]:
+async def demo_chargeback(background: BackgroundTasks) -> dict[str, Any]:
     if os.environ.get("DISPUTESHIELD_DEMO_MODE") != "1":
         raise HTTPException(404, "not found")
     resource = _demo_dispute()
@@ -161,11 +164,17 @@ async def demo_chargeback() -> dict[str, Any]:
     store.add_audit(res.dispute_id, "simulated_chargeback", {"reason": res.reason})
     receipt = SAMPLES / "ups_receipt.pdf"
     await _store_document(res.dispute_id, receipt.name, receipt.read_bytes())
+    background.add_task(autopilot.run, res.dispute_id)  # always, so an "off" autopilot shows its flag in the demo
     return _require_dispute(res.dispute_id)
 
 
 @router.post("/api/disputes/{dispute_id}/submit")
 async def submit(dispute_id: str) -> dict[str, Any]:
+    return await send_evidence(dispute_id)
+
+
+async def send_evidence(dispute_id: str) -> dict[str, Any]:
+    """The submit route's body, also called by the autopilot. Raises HTTPException."""
     d = _require_dispute(dispute_id)
     if d["status"] == "RESOLVED" or d["outcome"]:
         _refuse(dispute_id, 409, "dispute is closed")

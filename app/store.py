@@ -61,6 +61,10 @@ CREATE TABLE IF NOT EXISTS audit (
     detail TEXT NOT NULL,
     at TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS settings (
+    key TEXT PRIMARY KEY,
+    value TEXT NOT NULL
+);
 """
 
 UPSERT = """
@@ -212,6 +216,45 @@ def finish_submission(
             "UPDATE submissions SET state = ?, input = ?, response = ?, error = ?, updated_at = ? WHERE id = ?",
             (state, json.dumps(input), json.dumps(response), error, datetime.now(UTC).isoformat(), submission_id),
         )
+
+
+def has_live_submission(dispute_id: str) -> bool:
+    with closing(_connect()) as conn:
+        return conn.execute(
+            "SELECT 1 FROM submissions WHERE dispute_id = ? AND state IN ('pending', 'submitted')", (dispute_id,)
+        ).fetchone() is not None
+
+
+def get_autopilot() -> dict[str, Any]:
+    """Off and 85 until saved: sending to PayPal on its own is opt-in."""
+    with closing(_connect()) as conn:
+        raw = conn.execute("SELECT value FROM settings WHERE key = 'autopilot'").fetchone()
+    saved: dict[str, Any] = json.loads(raw["value"]) if raw else {}
+    return {"enabled": bool(saved.get("enabled", False)), "threshold": int(saved.get("threshold", 85))}
+
+
+def set_autopilot(enabled: bool, threshold: int) -> None:
+    with closing(_connect()) as conn:
+        conn.execute(
+            "INSERT INTO settings (key, value) VALUES ('autopilot', ?) "
+            "ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+            (json.dumps({"enabled": enabled, "threshold": threshold}),),
+        )
+
+
+def review_reasons() -> dict[str, list[str]]:
+    """Per dispute, the reasons of its latest autopilot flag, unless it was submitted after."""
+    out: dict[str, list[str]] = {}
+    with closing(_connect()) as conn:
+        for r in conn.execute(
+            "SELECT dispute_id, action, detail FROM audit "
+            "WHERE action IN ('autopilot_flagged', 'autopilot_submitted', 'submitted') ORDER BY id"
+        ):
+            if r["action"] == "autopilot_flagged":
+                out[r["dispute_id"]] = list(json.loads(r["detail"]).get("reasons", []))
+            else:
+                out.pop(r["dispute_id"], None)
+    return out
 
 
 def add_audit(dispute_id: str, action: str, detail: dict[str, Any] | None = None) -> None:

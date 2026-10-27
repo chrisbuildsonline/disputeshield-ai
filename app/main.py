@@ -5,6 +5,7 @@ from pathlib import Path
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 
+from app.autopilot import router as autopilot_router
 from app.submit import router as submit_router
 from app.webhooks import router
 
@@ -16,6 +17,7 @@ if os.environ.get("DISPUTESHIELD_DEMO_MODE") == "1":
 app = FastAPI(title="DisputeShield AI")
 app.include_router(submit_router)  # /api/disputes/sync before /api/disputes/{id}
 app.include_router(router)
+app.include_router(autopilot_router)
 
 
 @app.get("/api/health")

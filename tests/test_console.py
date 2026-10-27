@@ -51,7 +51,7 @@ def test_demo_chargeback_creates_dispute_with_receipt(client: TestClient) -> Non
     assert [x["name"] for x in docs] == ["ups_receipt.pdf"]
     assert docs[0]["evidence"]["tracking_number"] == "1Z999AA10123456784"
     actions = [a["action"] for a in client.get(f"/api/disputes/{d['id']}/audit").json()]
-    assert actions == ["simulated_chargeback", "document_added"]
+    assert actions[:2] == ["simulated_chargeback", "document_added"]  # autopilot (off) then flags it, see test_autopilot
 
 
 def test_config_reports_demo_mode(client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:

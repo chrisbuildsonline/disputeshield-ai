@@ -3,11 +3,11 @@ import os
 from typing import Any
 
 import httpx
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, BackgroundTasks, HTTPException, Request
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 from starlette.datastructures import Headers
 
-from app import paypal, scorecard, store
+from app import autopilot, paypal, scorecard, store
 from app.extract import ExtractedEvidence
 
 MAX_BODY = 1024 * 1024
@@ -112,7 +112,7 @@ async def read_body(request: Request, limit: int) -> bytes:
 
 
 @router.post("/api/webhooks/paypal")
-async def paypal_webhook(request: Request) -> dict[str, Any]:
+async def paypal_webhook(request: Request, background: BackgroundTasks) -> dict[str, Any]:
     body = await read_body(request, MAX_BODY)
     try:
         data = json.loads(body)
@@ -140,6 +140,8 @@ async def paypal_webhook(request: Request) -> dict[str, Any]:
     )
     if result == "duplicate":
         return {"duplicate": True}
+    if event.event_type == "CUSTOMER.DISPUTE.CREATED" and autopilot.enabled():
+        background.add_task(autopilot.run, dispute.dispute_id)
     return {
         "ok": True,
         "dispute_id": dispute.dispute_id,
@@ -153,7 +155,9 @@ def list_disputes() -> list[dict[str, Any]]:
     """Each row gets win_probability: null until a document is uploaded (never calls Claude)."""
     evidence = store.evidence_by_dispute()
     rows = store.list_disputes()
+    reasons = store.review_reasons()
     for row in rows:
+        row["review_reasons"] = reasons.get(row["id"])
         docs = evidence.get(row["id"])
         billing = row.pop("billing_address")
         row["win_probability"] = (

@@ -232,6 +232,7 @@ There are rulebooks for unauthorised use, item not as described, and a catch-all
 | `bun run e2e` | Playwright against a server it starts on port 8765, with the model and PayPal off. |
 | `bun run e2e:alt` | The same on port 8766, if 8765 is taken. |
 | `bun run demo:video` | Runs `bun run test` and `bun run typecheck` first and stops if either is red. Then starts its own server (demo mode, throwaway database, the local model on) and records a narrated tour of the console. Writes `out/disputeshield-demo.mp4` (1920x1080, about 2.5 minutes). Needs Ollama with `qwen3:8b`, `ffmpeg` and `uvx` (for the edge-tts voice). |
+| `bun run demo:frames` | Prints the video's streams and saves a frame every 10 seconds to `out/frame-NN.png`, to look it over. |
 | `bun run docker:test` | Builds the image and runs pytest inside it. |
 | `bun run docker:e2e` | Runs the Playwright suite against the container. |
 | `bun run docker:smoke` | Runs `docker compose up` like a judge, checks the token link, the 401 gate and the page. |

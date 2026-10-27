@@ -1,12 +1,13 @@
 # docker compose up: prints the "Operator console" link with the token. No Ollama sidecar (the model is ~5 GB):
 # point OLLAMA_HOST at one on the host, or the app falls back to regex and templates.
+# Demo mode is on here (no-key judge demo, loopback only); set DISPUTESHIELD_DEMO_MODE=0 to switch it off.
 services:
   app:
     build: .
     ports:
-      - "${HOST_PORT:-8000}:8000"
+      - "127.0.0.1:${HOST_PORT:-8000}:8000"
     environment:
-      DISPUTESHIELD_DEMO_MODE: "1"
+      DISPUTESHIELD_DEMO_MODE: ${DISPUTESHIELD_DEMO_MODE:-1}
       PORT: "8000"
       OLLAMA_HOST: http://host.docker.internal:11434
     extra_hosts:

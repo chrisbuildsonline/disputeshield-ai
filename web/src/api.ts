@@ -27,7 +27,8 @@ export interface Evidence {
   order_id: string | null;
   amount: string | null;
   customer_messages: string[];
-  source: "claude" | "fallback";
+  source: "ollama" | "claude" | "fallback";
+  model?: string | null;
 }
 
 export interface ScoreDoc {
@@ -41,7 +42,7 @@ export interface Score {
   base: number;
   factors: Factor[];
   documents: ScoreDoc[];
-  dossier: { note: string; note_source: "claude" | "template"; files: string[] };
+  dossier: { note: string; note_source: "ollama" | "claude" | "template"; note_model?: string | null; files: string[] };
 }
 
 export interface AuditRow {

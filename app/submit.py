@@ -10,7 +10,7 @@ from fastapi import APIRouter, HTTPException, Query, Request
 from fastapi.concurrency import run_in_threadpool
 from pydantic import ValidationError
 
-from app import paypal, scorecard, store
+from app import llm, paypal, scorecard, store
 from app.dossier import _validate_files, build_dossier
 from app.extract import MAX_PDF_BYTES, ExtractedEvidence, extract
 from app.scoring import INR, score
@@ -29,8 +29,8 @@ def _has_paypal_keys() -> bool:
     return bool(os.environ.get("PAYPAL_CLIENT_ID") and os.environ.get("PAYPAL_CLIENT_SECRET"))
 
 
-def _use_claude() -> bool:
-    return bool(os.environ.get("ANTHROPIC_API_KEY"))
+def _use_llm() -> bool:
+    return llm.provider() != "off"
 
 
 def _require_dispute(dispute_id: str) -> dict[str, Any]:
@@ -60,7 +60,7 @@ async def _store_document(dispute_id: str, name: str, data: bytes) -> dict[str, 
         _validate_files([(name, data)])  # name rule, extension and size, same as the PayPal upload
     except ValueError as e:
         raise HTTPException(422, str(e)) from None
-    evidence = await run_in_threadpool(extract, data, use_claude=_use_claude())
+    evidence = await run_in_threadpool(extract, data, use_llm=_use_llm())
     store.add_document(dispute_id, name, data, evidence.model_dump())
     store.add_audit(dispute_id, "document_added", {"name": name, "size": len(data)})
     return {"ok": True, "name": name, "size": len(data), "evidence": evidence.model_dump()}
@@ -85,7 +85,7 @@ _PREVIEWS: dict[tuple[Any, ...], dict[str, Any]] = {}  # dossier previews, see s
 async def score_preview(dispute_id: str) -> dict[str, Any]:
     """Score breakdown plus the dossier the submit would send.
 
-    The note may cost a Claude call, so the preview is only built here (the detail panel opening, never the
+    The note may cost a model call, so the preview is only built here (the detail panel opening, never the
     grid's poll) and is cached per dispute + document set: same documents, same note, no second call.
     """
     d = _require_dispute(dispute_id)
@@ -93,18 +93,19 @@ async def score_preview(dispute_id: str) -> dict[str, Any]:
     evs = [ExtractedEvidence.model_validate(x["evidence"]) for x in docs]
     dispute = scorecard.to_dispute(d, scorecard.billing_of(d["resource"]))
     result = score(dispute, scorecard.merge(evs))
-    key = (dispute_id, d["reason"], d["amount_value"], tuple((x["name"], x["created_at"]) for x in docs), _use_claude())
+    key = (dispute_id, d["reason"], d["amount_value"], tuple((x["name"], x["created_at"]) for x in docs), llm.provider())
     preview = _PREVIEWS.get(key)
     if preview is None:
         try:
             dossier = await run_in_threadpool(
-                build_dossier, dispute, evs, result, [(x["name"], x["data"]) for x in docs], use_claude=_use_claude()
+                build_dossier, dispute, evs, result, [(x["name"], x["data"]) for x in docs], use_llm=_use_llm()
             )
         except ValueError as e:
             raise HTTPException(422, str(e)) from None
         preview = {
             "note": dossier.input["evidences"][0]["notes"],
             "note_source": dossier.note_source,
+            "note_model": dossier.note_model,
             "files": [n for n, _ in dossier.files],
         }
         if len(_PREVIEWS) >= 256:
@@ -181,7 +182,7 @@ async def submit(dispute_id: str) -> dict[str, Any]:
         dispute = scorecard.to_dispute(d, scorecard.billing_of(d["resource"]))
         result = score(dispute, scorecard.merge(evs))
         dossier = await run_in_threadpool(
-            build_dossier, dispute, evs, result, [(x["name"], x["data"]) for x in docs], use_claude=_use_claude()
+            build_dossier, dispute, evs, result, [(x["name"], x["data"]) for x in docs], use_llm=_use_llm()
         )
         dossier_input = dossier.input
         status, response = UNDER_REVIEW, None

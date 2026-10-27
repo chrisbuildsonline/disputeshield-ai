@@ -45,9 +45,10 @@ function auditText(a: AuditRow): string {
   }
 }
 
-function sourceBadge(source: string): string {
-  const [text, cls] = source === "claude" ? ["Claude", "badge-ai"] : source === "template" ? ["Template", "badge-muted"] : ["Regex fallback", "badge-muted"];
-  return `<span class="badge ${cls}">${text}</span>`;
+function sourceBadge(source: string, model?: string | null): string {
+  const ai = source === "ollama" || source === "claude";
+  const text = ai ? `AI &middot; ${esc(model || (source === "claude" ? "Claude" : "Ollama"))}` : source === "template" ? "Template" : "Regex fallback";
+  return `<span class="badge ${ai ? "badge-ai" : "badge-muted"}">${text}</span>`;
 }
 
 function renderEvidence(score: Score): string {
@@ -58,7 +59,7 @@ function renderEvidence(score: Score): string {
       const rows = FIELDS.filter(([k]) => e[k]).map(([k, label]) => `<dt>${label}</dt><dd>${esc(e[k])}</dd>`);
       for (const m of e.customer_messages) rows.push(`<dt>Customer message</dt><dd>${esc(m)}</dd>`);
       return `<div class="card"><div class="card-head"><strong>${esc(doc.name)}</strong>
-        <span class="muted">Read by</span> ${sourceBadge(e.source)}</div>
+        <span class="muted">Read by</span> ${sourceBadge(e.source, e.model)}</div>
         <dl class="facts">${rows.join("") || `<dt>Nothing found</dt><dd>No facts could be read from this file.</dd>`}</dl></div>`;
     })
     .join("");
@@ -88,7 +89,7 @@ function renderDossier(score: Score): string {
   const files = d.files.length
     ? `<ul class="files">${d.files.map((f) => `<li>${esc(f)}</li>`).join("")}</ul>`
     : `<p class="muted">No files will be attached.</p>`;
-  return `<div class="card"><div class="card-head"><strong>Rebuttal note</strong><span class="muted">Written by</span> ${sourceBadge(d.note_source)}</div>
+  return `<div class="card"><div class="card-head"><strong>Rebuttal note</strong><span class="muted">Written by</span> ${sourceBadge(d.note_source, d.note_model)}</div>
     <p class="note">${esc(d.note)}</p></div>
     <h4>Attached documents</h4>${files}`;
 }
@@ -120,7 +121,7 @@ export interface Detail {
   isOpen(): boolean;
   /** Called by the grid poll so the header and submit button follow the live row. */
   update(d: Dispute): void;
-  /** The audit trail is cheap, so it refreshes with the poll (the score does not, it can cost a Claude call). */
+  /** The audit trail is cheap, so it refreshes with the poll (the score does not, it can cost a model call). */
   refreshAudit(): void;
 }
 

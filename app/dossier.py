@@ -1,7 +1,7 @@
 """Build a PayPal provide-evidence request (POST /v1/customer/disputes/{id}/provide-evidence).
 
 Output is the multipart pieces: `input` (a JSON dict, part name INPUT_PART) and the attached
-files (part name FILE_PART). The rebuttal note is drafted by Claude from the extracted facts
+files (part name FILE_PART). The rebuttal note is drafted by a local Ollama model (or Claude, if chosen) from the extracted facts
 only, then fact-checked: any id, amount, date or time in it that is not in the dispute or
 evidence rejects it and a deterministic template note is used instead. build_dossier()
 raises ValueError only for bad attachments (type, size, name); everything else is tolerated.
@@ -17,6 +17,7 @@ from dataclasses import dataclass, field
 from decimal import Decimal, InvalidOperation
 from typing import Any, Literal
 
+from app import llm
 from app.extract import DEFAULT_MODEL, ExtractedEvidence
 from app.scoring import INR, Dispute, ScoreResult
 
@@ -55,9 +56,9 @@ _FALLBACK_NOTE = "Supporting documents are attached for review."
 class Dossier:
     input: dict[str, Any]
     files: list[tuple[str, bytes]]
-    note_source: Literal["claude", "template"]
+    note_source: Literal["ollama", "claude", "template"]
     note_model: str | None = None
-    notes: list[str] = field(default_factory=list)  # why a Claude note was not used, if so
+    notes: list[str] = field(default_factory=list)  # why a model note was not used, if so
 
 
 # ---- helpers ----
@@ -255,22 +256,37 @@ _PROMPT = (
 )
 
 
+def _facts(dispute: Dispute, evidence: list[ExtractedEvidence], result: ScoreResult) -> str:
+    return json.dumps(
+        {
+            "dispute_reason": dispute.reason,
+            "dispute_amount": str(dispute.amount),
+            "evidence": [e.model_dump(exclude={"source", "model"}, exclude_none=True) for e in evidence],
+            "met_factors": [f.label for f in result.factors if f.met],
+            "unmet_factors": [f.label for f in result.factors if not f.met],
+        },
+        ensure_ascii=False,
+    )
+
+
+def _ollama_note(dispute: Dispute, evidence: list[ExtractedEvidence], result: ScoreResult) -> tuple[str, str]:
+    """Ask the local model for the note; return (text, model that answered)."""
+    text, model = llm.ollama_chat(_PROMPT + _facts(dispute, evidence, result))
+    text = text.strip()
+    if not text:
+        raise ValueError("empty note from Ollama")
+    return text, model
+
+
 def _claude_note(dispute: Dispute, evidence: list[ExtractedEvidence], result: ScoreResult) -> tuple[str, str]:
     """Ask Claude for the note; return (text, model id that answered)."""
     import anthropic
 
-    facts = {
-        "dispute_reason": dispute.reason,
-        "dispute_amount": str(dispute.amount),
-        "evidence": [e.model_dump(exclude={"source", "model"}, exclude_none=True) for e in evidence],
-        "met_factors": [f.label for f in result.factors if f.met],
-        "unmet_factors": [f.label for f in result.factors if not f.met],
-    }
     client = anthropic.Anthropic(timeout=45.0, max_retries=1)
     resp = client.messages.create(
         model=os.environ.get("DISPUTESHIELD_CLAUDE_MODEL") or DEFAULT_MODEL,
         max_tokens=800,
-        messages=[{"role": "user", "content": _PROMPT + json.dumps(facts, ensure_ascii=False)}],
+        messages=[{"role": "user", "content": _PROMPT + _facts(dispute, evidence, result)}],
     )
     text = "".join(b.text for b in resp.content if b.type == "text").strip()
     if not text:
@@ -279,19 +295,21 @@ def _claude_note(dispute: Dispute, evidence: list[ExtractedEvidence], result: Sc
 
 
 def _choose_note(
-    dispute: Dispute, evs: list[ExtractedEvidence], result: ScoreResult, use_claude: bool
-) -> tuple[str, Literal["claude", "template"], str | None, list[str]]:
+    dispute: Dispute, evs: list[ExtractedEvidence], result: ScoreResult, use_llm: bool
+) -> tuple[str, Literal["ollama", "claude", "template"], str | None, list[str]]:
     why: list[str] = []
-    if use_claude and os.environ.get("ANTHROPIC_API_KEY"):
+    which = llm.provider() if use_llm else "off"
+    if which != "off":
+        name = which.capitalize()
         try:
-            text, model = _claude_note(dispute, evs, result)
+            text, model = (_ollama_note if which == "ollama" else _claude_note)(dispute, evs, result)
             text = _truncate(text)
             bad = fact_check(text, dispute, evs)
             if not bad:
-                return text, "claude", model, why
-            why.append(f"Claude note failed fact check: {bad[:5]}")
+                return text, which, model, why
+            why.append(f"{name} note failed fact check: {bad[:5]}")
         except Exception as e:
-            why.append(f"Claude note failed: {type(e).__name__}: {str(e)[:200]}")
+            why.append(f"{name} note failed: {type(e).__name__}: {str(e)[:200]}")
         logger.warning("using template note: %s", why[-1])
     note = template_note(dispute, evs, result)
     if fact_check(note, dispute, evs):  # should never happen; the fallback has no facts in it
@@ -305,14 +323,14 @@ def build_dossier(
     result: ScoreResult,
     documents: list[tuple[str, bytes]] | tuple[tuple[str, bytes], ...] = (),
     *,
-    use_claude: bool = True,
+    use_llm: bool = True,
 ) -> Dossier:
     """Build the provide-evidence request. Raises ValueError only for bad attachments."""
     files = [(n, bytes(d)) for n, d in documents]
     _validate_files(files)
     pairs = _tracking(evidence)
     fulfilment = dispute.reason == INR and any(c for c, _ in pairs)
-    note, source, model, why = _choose_note(dispute, evidence, result, use_claude)
+    note, source, model, why = _choose_note(dispute, evidence, result, use_llm)
     ev: dict[str, Any] = {"evidence_type": "PROOF_OF_FULFILLMENT" if fulfilment else "OTHER", "notes": note}
     if pairs:
         ev["evidence_info"] = {"tracking_info": [_tracking_info(c, tn) for c, tn in pairs]}

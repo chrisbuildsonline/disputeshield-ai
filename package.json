@@ -8,9 +8,13 @@
     "samples": "uv run python scripts/make_samples.py",
     "build": "bun build web/index.html --outdir app/static",
     "dev": "bun run build && DISPUTESHIELD_DEMO_MODE=1 uv run uvicorn app.main:app --reload --port 8000",
-    "test": "bun run build && uv run pytest -q",
+    "llm:start": "systemctl --user start ollama || true",
+    "llm:models": "ollama list",
+    "llm:pull": "ollama pull qwen3:8b",
+    "test": "bun run llm:start && bun run build && uv run pytest -q",
     "typecheck": "tsc -p . --noEmit && uv run mypy app tests",
     "e2e": "playwright test",
+    "e2e:alt": "E2E_PORT=8766 playwright test",
     "e2e:install": "playwright install chromium"
   },
   "devDependencies": {

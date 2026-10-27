@@ -11,19 +11,22 @@ if (!process.env.TEST_WORKER_INDEX) {
   mkdirSync(dbDir, { recursive: true });
 }
 
+const port = process.env.E2E_PORT || "8765";
+
 export default defineConfig({
   testDir: "e2e",
   workers: 1, // one shared database, so tests run one after another
-  use: { baseURL: "http://127.0.0.1:8765" },
+  use: { baseURL: `http://127.0.0.1:${port}` },
   projects: [{ name: "chromium", use: { ...devices["Desktop Chrome"] } }],
   webServer: {
-    command: "bun run build && uv run uvicorn app.main:app --port 8765",
-    url: "http://127.0.0.1:8765/api/health",
+    command: `bun run build && uv run uvicorn app.main:app --port ${port}`,
+    url: `http://127.0.0.1:${port}/api/health`,
     reuseExistingServer: false,
     env: {
       DISPUTESHIELD_DEMO_MODE: "1",
       DISPUTESHIELD_DB: db,
-      // regex and template paths only: the e2e run never calls Claude or PayPal
+      // regex and template paths only: the e2e run never calls a model or PayPal
+      DISPUTESHIELD_LLM: "off",
       ANTHROPIC_API_KEY: "",
       PAYPAL_CLIENT_ID: "",
       PAYPAL_CLIENT_SECRET: "",

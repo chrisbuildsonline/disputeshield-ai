@@ -18,6 +18,11 @@
       </div>
       <div class="top-actions">
         <span id="demo-badge" class="badge badge-demo" hidden>Demo mode</span>
+        <div class="autopilot">
+          <label><input id="autopilot-on" type="checkbox" role="switch" /> Autopilot</label>
+          <label>Threshold <input id="autopilot-threshold" type="number" min="0" max="100" step="1" value="85" /></label>
+          <span id="autopilot-error" class="urgent" role="alert"></span>
+        </div>
         <button id="simulate-btn" class="btn btn-primary" type="button" hidden>Simulate chargeback</button>
       </div>
     </header>
@@ -41,6 +46,7 @@
           </div>
           <button id="detail-close" class="btn" type="button">Close <kbd>Esc</kbd></button>
         </div>
+        <div id="detail-flag"></div>
         <div id="detail-body" class="detail-body"></div>
         <div class="detail-foot">
           <div id="submit-result" role="status" aria-live="polite"></div>

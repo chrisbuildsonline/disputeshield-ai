@@ -83,6 +83,23 @@ body {
   gap: 12px;
 }
 
+.autopilot {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 14px;
+}
+
+.autopilot input[type="number"] {
+  width: 4.5em;
+  font: inherit;
+}
+
+.banner ul {
+  margin: 4px 0 0;
+  padding-left: 18px;
+}
+
 /* buttons and badges */
 .btn {
   font: inherit;

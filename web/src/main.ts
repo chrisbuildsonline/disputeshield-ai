@@ -7,7 +7,7 @@ import {
   type GridApi,
   type ICellRendererParams,
 } from "ag-grid-community";
-import { api, esc, money, needsAction, reasonLabel, statusLabel, timeLeft, type Dispute } from "./api";
+import { api, ApiError, esc, money, needsAction, reasonLabel, statusLabel, timeLeft, type Autopilot, type Dispute } from "./api";
 import { createDetail } from "./detail";
 
 ModuleRegistry.registerModules([AllCommunityModule]);
@@ -37,7 +37,10 @@ const columns: ColDef<Dispute>[] = [
     headerName: "Status",
     width: 160,
     cellRenderer: (p: ICellRendererParams<Dispute>) =>
-      p.data ? badge(statusLabel(p.data.status), needsAction(p.data) ? "badge-red" : "badge-calm") : "",
+      p.data
+        ? badge(statusLabel(p.data.status), needsAction(p.data) ? "badge-red" : "badge-calm") +
+          (p.data.review_reasons ? ` ${badge("Needs review", "badge-amber")}` : "")
+        : "",
   },
   {
     colId: "source",
@@ -150,6 +153,30 @@ simulateBtn.addEventListener("click", async () => {
     simulateBtn.disabled = false;
   }
 });
+
+const apOn = byId<HTMLInputElement>("autopilot-on");
+const apThreshold = byId<HTMLInputElement>("autopilot-threshold");
+const apError = byId("autopilot-error");
+
+async function saveAutopilot(): Promise<void> {
+  apError.textContent = "";
+  try {
+    const s = await api<Autopilot>("/api/autopilot", "PUT", { enabled: apOn.checked, threshold: Number(apThreshold.value) });
+    apOn.checked = s.enabled;
+    apThreshold.value = String(s.threshold);
+  } catch (e) {
+    apError.textContent = e instanceof ApiError && e.status === 422 ? "Threshold must be a whole number from 0 to 100." : "Could not save the autopilot setting.";
+  }
+}
+apOn.addEventListener("change", () => void saveAutopilot());
+apThreshold.addEventListener("change", () => void saveAutopilot());
+try {
+  const s = await api<Autopilot>("/api/autopilot");
+  apOn.checked = s.enabled;
+  apThreshold.value = String(s.threshold);
+} catch {
+  apError.textContent = "Could not load the autopilot setting.";
+}
 
 try {
   const cfg = await api<{ demo_mode: boolean }>("/api/config");

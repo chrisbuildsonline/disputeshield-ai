@@ -40,6 +40,18 @@ function auditText(a: AuditRow): string {
       return `Submit failed: ${String(d.error ?? "")}`;
     case "synced":
       return "Synced from PayPal";
+    case "autopilot_started":
+      return "Autopilot started";
+    case "autopilot_evidence":
+      return `Autopilot read ${String(d.documents ?? 0)} document(s)`;
+    case "autopilot_scored":
+      return `Autopilot scored the case ${String(d.probability)}% (threshold ${String(d.threshold)}%)`;
+    case "autopilot_submitted":
+      return "Autopilot submitted the evidence";
+    case "autopilot_flagged":
+      return `Autopilot flagged for review: ${Array.isArray(d.reasons) ? d.reasons.map(String).join("; ") : ""}`;
+    case "autopilot_skipped":
+      return "Autopilot skipped (closed or already submitted)";
     default:
       return a.action.replace(/_/g, " ");
   }
@@ -142,6 +154,10 @@ export function createDetail(opts: { onClose: (id: string) => void; onSubmitted:
     el("detail-title").textContent = `Dispute ${current.id}`;
     const amt = money(current.amount_value, current.currency);
     el("detail-sub").textContent = `${reasonLabel(current.reason)}${amt ? ` · ${amt}` : ""} · ${statusLabel(current.status)}`;
+    const why = current.review_reasons;
+    el("detail-flag").innerHTML = why?.length
+      ? `<div class="banner banner-bad" role="status"><strong>Needs review</strong><ul>${why.map((r) => `<li>${esc(r)}</li>`).join("")}</ul></div>`
+      : "";
     const submittedEntry = audit.find((a) => a.action === "submitted");
     const done = !needsAction(current) || sending || !!submittedEntry;
     button.disabled = done || !score;

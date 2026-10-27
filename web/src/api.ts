@@ -8,6 +8,12 @@ export interface Dispute {
   outcome: string | null;
   source: string;
   win_probability: number | null;
+  review_reasons: string[] | null;
+}
+
+export interface Autopilot {
+  enabled: boolean;
+  threshold: number;
 }
 
 export interface Factor {
@@ -69,10 +75,13 @@ export class ApiError extends Error {
   }
 }
 
-export async function api<T>(path: string, method = "GET"): Promise<T> {
+export async function api<T>(path: string, method = "GET", json?: unknown): Promise<T> {
   let res: Response;
   try {
-    res = await fetch(path, { method });
+    res = await fetch(
+      path,
+      json === undefined ? { method } : { method, headers: { "content-type": "application/json" }, body: JSON.stringify(json) },
+    );
   } catch {
     throw new ApiError(0, "Could not reach the server.");
   }

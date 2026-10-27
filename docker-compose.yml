@@ -1,0 +1,16 @@
+# docker compose up: prints the "Operator console" link with the token. No Ollama sidecar (the model is ~5 GB):
+# point OLLAMA_HOST at one on the host, or the app falls back to regex and templates.
+services:
+  app:
+    build: .
+    ports:
+      - "${HOST_PORT:-8000}:8000"
+    environment:
+      DISPUTESHIELD_DEMO_MODE: "1"
+      PORT: "8000"
+      OLLAMA_HOST: http://host.docker.internal:11434
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    env_file:
+      - path: .env
+        required: false

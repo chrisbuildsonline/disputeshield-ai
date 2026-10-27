@@ -1,0 +1,16 @@
+.env
+.env.*
+.git
+.venv
+node_modules
+app/static
+test-results
+playwright-report
+__pycache__
+.mypy_cache
+.pytest_cache
+.hypothesis
+.omc
+.claude
+data
+*.db

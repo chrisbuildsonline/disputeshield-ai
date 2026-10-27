@@ -71,6 +71,23 @@ def test_required_sections(heading: str) -> None:
     assert any(heading.lower() in h.lower() for h in headings), f"no '{heading}' heading"
 
 
+def test_demo_video_script_is_wired_and_documented() -> None:
+    scripts = json.loads((ROOT / "package.json").read_text(encoding="utf-8"))["scripts"]
+    assert "scripts/demo-video.ts" in scripts.get("demo:video", "")
+    assert (ROOT / "scripts" / "demo-video.ts").is_file()
+    assert "bun run demo:video" in README
+    assert "out/disputeshield-demo.mp4" in README
+
+
+def test_demo_video_output_is_gitignored() -> None:
+    assert "out/" in (ROOT / ".gitignore").read_text(encoding="utf-8").splitlines()
+
+
+def test_demo_video_is_type_checked() -> None:
+    tsconfig = json.loads((ROOT / "tsconfig.json").read_text(encoding="utf-8"))
+    assert "scripts" in tsconfig["include"]
+
+
 def test_env_files_are_ignored_correctly() -> None:
     lines = (ROOT / ".gitignore").read_text(encoding="utf-8").splitlines()
     assert ".env" in lines

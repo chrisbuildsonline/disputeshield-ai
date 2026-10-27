@@ -19,7 +19,9 @@
     "docker:test": "bash scripts/docker-test.sh",
     "docker:e2e": "bash scripts/docker-e2e.sh",
     "docker:smoke": "bash scripts/docker-smoke.sh",
-    "smoke:fresh": "bash scripts/fresh-clone-smoke.sh"
+    "smoke:fresh": "bash scripts/fresh-clone-smoke.sh",
+    "demo:video": "bun scripts/demo-video.ts",
+    "demo:frames": "ffprobe -v error -show_entries format=duration:stream=codec_name,width,height -of compact out/disputeshield-demo.mp4 && ffmpeg -v error -y -i out/disputeshield-demo.mp4 -vf fps=1/10,scale=960:-2 out/frame-%02d.png"
   },
   "devDependencies": {
     "@playwright/test": "^1.50.0",

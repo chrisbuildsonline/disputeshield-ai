@@ -162,6 +162,13 @@ def test_guard_keeps_real_ids_ignoring_space_and_case(monkeypatch: pytest.Monkey
     assert extract(UPS).tracking_number == "1z 999aa1 0123456784"
 
 
+def test_guard_drops_invented_customer_messages() -> None:
+    text = "Order A-1042\nCustomer: Hi, where is my\nparcel? It has not arrived.\n"
+    fields = {"customer_messages": ["Hi, where is my parcel?", "Thank you for your service."]}
+    r = ex._guard(fields, "ollama", "stub-model", text)
+    assert r.customer_messages == ["Hi, where is my parcel?"]
+
+
 def test_oversize_rejected() -> None:
     with pytest.raises(ValueError, match="10 MB"):
         extract(b"0" * (10 * 1024 * 1024 + 1), use_llm=False)

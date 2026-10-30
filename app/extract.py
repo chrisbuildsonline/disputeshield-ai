@@ -194,12 +194,13 @@ def _guard(
     m = re.search(r"\d[\d,]*(?:\.\d{1,2})?", data["amount"] or "")
     data["amount"] = m.group(0).replace(",", "") if m else None
     result = ExtractedEvidence.model_validate({**data, "source": source, "model": model})
-    if text.strip():  # anti-hallucination: ids and the amount must appear in the PDF's own text
+    if text.strip():  # anti-hallucination: ids, the amount and customer messages must appear in the PDF's own text
         haystack = _squash(text)
         for name in ("tracking_number", "order_id", "amount"):
             value = getattr(result, name)
             if value and _squash(value) not in haystack:
                 setattr(result, name, None)
+        result.customer_messages = [m for m in result.customer_messages if _squash(m) in haystack]
     if fill is not None:  # fields the model left empty or got wrong come from the regex parser
         for name in EvidenceFields.model_fields:
             if not getattr(result, name):

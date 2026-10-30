@@ -219,6 +219,35 @@ def test_hallucinating_claude_falls_back(monkeypatch: pytest.MonkeyPatch, caplog
     assert any("fact check" in r.getMessage() for r in caplog.records)
 
 
+@pytest.mark.parametrize(
+    "note",
+    [
+        "Your claim is partially valid. Order A-1042 for 49.90 was delivered.",
+        "The claim is valid, order A-1042 was not delivered.",
+        "We apologise for the delay with order A-1042.",
+        "We apologize for the delay with order A-1042.",
+        "We will refund the 49.90.",
+        "Order A-1042 was delivered. Please confirm the billing address.",
+    ],
+)
+def test_conceding_note_falls_back(monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture, note: str) -> None:
+    monkeypatch.setenv("DISPUTESHIELD_LLM", "claude")
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-test")
+    monkeypatch.setattr(ds, "_claude_note", lambda *_: (note, "stub"))
+    with caplog.at_level("WARNING", logger="app.dossier"):
+        d = _build(use_llm=True)
+    assert d.note_source == "template"
+    assert any("concedes" in w for w in d.notes)
+    assert any("concedes" in r.getMessage() for r in caplog.records)
+
+
+def test_facts_for_the_note_carry_no_unmet_factors() -> None:
+    evs = _sample_evidence()
+    result = score(DISPUTE, to_evidence(evs[0]))
+    assert any(not f.met for f in result.factors)
+    assert "unmet" not in ds._facts(DISPUTE, evs, result)
+
+
 def test_claude_error_falls_back(monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture) -> None:
     monkeypatch.setenv("DISPUTESHIELD_LLM", "claude")
     monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-secret-value")

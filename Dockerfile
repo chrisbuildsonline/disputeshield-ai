@@ -15,6 +15,8 @@ COPY app ./app
 COPY tests ./tests
 COPY samples ./samples
 COPY scripts ./scripts
+# the repo-wiring tests (README, compose, scripts) read these from the repo root
+COPY README.md docker-compose.yml playwright.config.ts package.json tsconfig.json .gitignore .env.example ./
 COPY --from=web /src/app/static ./app/static
 EXPOSE 8000
 # the database lands in /app/data (DISPUTESHIELD_DB unset); uvicorn logs the operator console link to stderr

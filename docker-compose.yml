@@ -1,7 +1,26 @@
-# docker compose up: prints the "Operator console" link with the token. No Ollama sidecar (the model is ~5 GB):
-# point OLLAMA_HOST at one on the host, or the app falls back to regex and templates.
+# docker compose up: prints the "Operator console" link with the token. It also starts a CPU-only Ollama sidecar and
+# pulls the model once (qwen2.5:3b, about 2 GB, kept in the ollama-models volume), so the AI path works on any machine.
+# To use an Ollama on the host instead: OLLAMA_HOST=http://host.docker.internal:11434 DISPUTESHIELD_OLLAMA_MODEL=qwen3:8b docker compose up
 # Demo mode is on here (no-key judge demo, loopback only); set DISPUTESHIELD_DEMO_MODE=0 to switch it off.
 services:
+  ollama:
+    image: ollama/ollama
+    volumes:
+      - ollama-models:/root/.ollama
+    healthcheck:
+      test: ["CMD", "ollama", "list"]
+      interval: 3s
+      timeout: 5s
+      retries: 40
+  ollama-pull:
+    image: ollama/ollama
+    environment:
+      OLLAMA_HOST: ollama:11434
+    entrypoint: ["ollama", "pull", "${DISPUTESHIELD_OLLAMA_MODEL:-qwen2.5:3b}"]
+    depends_on:
+      ollama:
+        condition: service_healthy
+    restart: "no"
   app:
     build: .
     ports:
@@ -9,9 +28,15 @@ services:
     environment:
       DISPUTESHIELD_DEMO_MODE: ${DISPUTESHIELD_DEMO_MODE:-1}
       PORT: "8000"
-      OLLAMA_HOST: http://host.docker.internal:11434
+      OLLAMA_HOST: ${OLLAMA_HOST:-http://ollama:11434}
+      DISPUTESHIELD_OLLAMA_MODEL: ${DISPUTESHIELD_OLLAMA_MODEL:-qwen2.5:3b}
+    depends_on:
+      ollama-pull:
+        condition: service_completed_successfully
     extra_hosts:
       - "host.docker.internal:host-gateway"
     env_file:
       - path: .env
         required: false
+volumes:
+  ollama-models:

@@ -40,7 +40,11 @@ Operator console: http://localhost:8000/#token=...
 
 Click "Simulate chargeback". Demo mode is on in the compose file and shown with a "Demo mode" badge in the page header. To use another port, run `HOST_PORT=8790 docker compose up`. The logged link still says port 8000 (the port inside the container), so change the port in the link to your `HOST_PORT`.
 
-Without Ollama the app still works, with regex reading and a template note, and the page shows "Regex fallback" and "Template" badges. See [AI models and tools](#ai-models-and-tools) to turn the model on.
+Compose model: `qwen2.5:3b`
+
+`docker compose up` also starts a CPU-only Ollama container (no GPU needed) and pulls that model into the `ollama-models` volume. The first start downloads about 2 GB, so the console opens a few minutes later. Later starts reuse the volume. Reading a PDF takes about 5 to 15 seconds and the note about 7 seconds on a CPU. To use an Ollama on your own machine instead, set `OLLAMA_HOST` and `DISPUTESHIELD_OLLAMA_MODEL` (see [AI models and tools](#ai-models-and-tools)).
+
+Without any Ollama the app still works, with regex reading and a template note, and the page shows "Regex fallback" and "Template" badges.
 
 ## Run it locally (bun)
 
@@ -92,7 +96,7 @@ What the model does, and the guards around it:
 - The rebuttal note is written from the extracted facts only, then fact-checked. Any id, amount, date or time that is not in the dispute or the evidence rejects the note, and a fixed template note is used instead.
 - If the model is down or fails, the regex parser and the template take over. The detail panel shows who did the work: an "AI" badge with the model name, "Regex fallback" or "Template".
 
-Docker and Ollama: the compose file points the container at `http://host.docker.internal:11434`, so it uses the Ollama on your machine. On plain Linux Docker, Ollama listens on 127.0.0.1 by default and the container cannot reach it. Start Ollama with `OLLAMA_HOST=0.0.0.0` on the host. Otherwise you will see the fallback badges. Docker Desktop does not need this.
+Docker and Ollama: by default the compose file points the app at its own `ollama` container (`http://ollama:11434`) and the model above (`qwen2.5:3b`, the smallest non-thinking model that read both sample PDFs correctly and wrote a note that passed the fact check; `qwen2.5:0.5b` and `1.5b` did not). The sidecar port is not published, so it cannot clash with an Ollama on your host. To use the host's Ollama and `qwen3:8b` instead, run `OLLAMA_HOST=http://host.docker.internal:11434 DISPUTESHIELD_OLLAMA_MODEL=qwen3:8b docker compose up`. On plain Linux Docker, the host's Ollama listens on 127.0.0.1 by default and the container cannot reach it, so start it with `OLLAMA_HOST=0.0.0.0`. If `OLLAMA_HOST` is already set in your shell, unset it or the compose file will use it. `bun run llm:try <model>...` measures candidate models in a throwaway CPU container.
 
 ## PayPal sandbox keys (free)
 

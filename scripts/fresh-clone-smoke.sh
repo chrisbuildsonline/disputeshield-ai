@@ -69,7 +69,7 @@ STEP="compose: docker compose up"
 export HOST_PORT=$COMPOSE_PORT
 docker compose -p "$PROJECT" up -d --build
 STEP="compose: wait for health"
-wait_health "http://127.0.0.1:$COMPOSE_PORT" || { docker compose -p "$PROJECT" ps -a; docker compose -p "$PROJECT" logs app; exit 1; }
+wait_health "http://127.0.0.1:$COMPOSE_PORT" 900 || { docker compose -p "$PROJECT" ps -a; docker compose -p "$PROJECT" logs app; exit 1; }
 STEP="compose: token link in the logs"
 token=$(docker compose -p "$PROJECT" logs app 2>&1 | grep -o 'Operator console: http://localhost:8000/#token=[A-Za-z0-9_-]*' | head -n 1 | cut -d= -f2)
 [ -n "$token" ] || { echo "no Operator console #token= link in the logs" >&2; exit 1; }

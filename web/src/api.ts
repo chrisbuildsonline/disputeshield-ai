@@ -43,7 +43,17 @@ export interface ScoreDoc {
   evidence: Evidence;
 }
 
+export type RecAction = "fight" | "offer_refund" | "accept";
+
+export interface Recommendation {
+  action: RecAction;
+  reason: string;
+  fight_at: number;
+  accept_below: number;
+}
+
 export interface Score {
+  recommendation: Recommendation;
   probability: number;
   base: number;
   factors: Factor[];
@@ -64,6 +74,23 @@ export interface SubmitResult {
   label: string;
   status: string;
   probability: number;
+}
+
+export interface ActResult {
+  mode: string;
+  demo: boolean;
+  label: string;
+  action: "accept" | "offer";
+  status: string;
+  paypal_response: unknown;
+}
+
+export interface SyncResult {
+  count: number;
+  fetched_at: string;
+  debug_id: string | null;
+  mode: "sandbox" | "live";
+  disputes: { dispute_id: string; result: string }[];
 }
 
 export class ApiError extends Error {

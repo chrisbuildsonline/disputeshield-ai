@@ -1,9 +1,12 @@
 :root {
   --ink: #0f172a;
-  --muted: #475569;
-  --line: #e2e8f0;
-  --bg: #f8fafc;
-  --brand: #4338ca;
+  --muted: #5b6476;
+  --line: #e6e8ee;
+  --bg: #eef0f4; /* the canvas: white surfaces float on it */
+  --inset: #f5f6f8; /* a card inside a white surface */
+  --dark: #111827; /* the one primary action per screen */
+  --shadow: 0 1px 2px rgba(15, 23, 42, 0.04), 0 8px 24px rgba(15, 23, 42, 0.06);
+  --brand: #4338ca; /* the one accent: links, selection, charts */
   --red: #b91c1c;
   --red-bg: #fef2f2;
   --green: #047857;
@@ -48,10 +51,13 @@ body {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  flex-wrap: wrap; /* the actions drop to their own row as a group, never split around the title */
   gap: 16px;
-  padding: 16px 28px;
-  background: #fff;
-  border-bottom: 1px solid var(--line);
+  padding: 20px 28px 4px;
+}
+
+.brand {
+  flex: 1 1 360px;
 }
 
 .brand h1 {
@@ -79,6 +85,7 @@ body {
 
 .top-actions {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 12px;
 }
@@ -105,37 +112,51 @@ body {
   font: inherit;
   font-weight: 600;
   font-size: 14px;
-  padding: 9px 16px;
-  border-radius: 8px;
-  border: 1px solid #cbd5e1;
+  padding: 9px 18px;
+  border-radius: 999px;
+  border: 1px solid #d5d9e2;
   background: #fff;
   color: var(--ink);
   cursor: pointer;
 }
 
 .btn:hover:not(:disabled) {
-  background: #f1f5f9;
+  background: #f3f4f7;
 }
 
 .btn-primary {
-  background: var(--brand);
-  border-color: var(--brand);
+  background: var(--dark);
+  border-color: var(--dark);
   color: #fff;
 }
 
 .btn-primary:hover:not(:disabled) {
-  background: #3730a3;
+  background: #1f2937;
 }
 
 .btn:disabled {
   cursor: not-allowed;
-  opacity: 0.65;
+  opacity: 0.55;
 }
 
 .btn-wide {
   width: 100%;
   padding: 12px 16px;
   font-size: 15px;
+}
+
+/* a real button that steps back: Submit evidence when the score says settle */
+.btn-wide.btn-quiet {
+  padding: 6px 16px;
+  border-color: transparent;
+  background: transparent;
+  color: var(--muted);
+  font-size: 14px;
+}
+
+.btn-wide.btn-quiet:hover:not(:disabled) {
+  background: var(--inset);
+  color: var(--ink);
 }
 
 kbd {
@@ -213,8 +234,8 @@ kbd {
   min-height: 420px;
   min-width: 0;
   background: #fff;
-  border: 1px solid var(--line);
-  border-radius: 12px;
+  border-radius: 18px;
+  box-shadow: var(--shadow);
   overflow: hidden;
 }
 
@@ -223,7 +244,8 @@ kbd {
   inset: 0;
 }
 
-.btn-primary.btn-done:disabled {
+.btn.btn-done:disabled {
+  color: #fff;
   background: var(--green);
   border-color: var(--green);
   opacity: 1;
@@ -256,6 +278,7 @@ kbd {
   text-align: center;
   padding: 24px;
   background: #fff;
+  z-index: 2; /* above AG Grid's own "No Rows To Show" overlay */
 }
 
 .empty[hidden] {
@@ -274,15 +297,16 @@ kbd {
 /* detail panel */
 .detail {
   position: fixed;
-  top: 0;
-  right: 0;
-  bottom: 0;
-  width: min(580px, 100vw);
+  top: 12px;
+  right: 12px;
+  bottom: 12px;
+  width: min(580px, calc(100vw - 24px));
   display: flex;
   flex-direction: column;
   background: #fff;
-  border-left: 1px solid var(--line);
-  box-shadow: -12px 0 32px rgba(15, 23, 42, 0.12);
+  border-radius: 20px;
+  overflow: hidden;
+  box-shadow: 0 2px 6px rgba(15, 23, 42, 0.06), 0 24px 56px rgba(15, 23, 42, 0.16);
   z-index: 10;
 }
 
@@ -297,6 +321,11 @@ kbd {
   gap: 12px;
   padding: 18px 22px;
   border-bottom: 1px solid var(--line);
+}
+
+.detail-head .btn {
+  flex: none;
+  white-space: nowrap;
 }
 
 .detail-head h2 {
@@ -334,13 +363,222 @@ kbd {
 }
 
 .detail-foot {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
   padding: 14px 22px 18px;
   border-top: 1px solid var(--line);
-  background: #f8fafc;
+  background: #fff;
 }
 
-.detail-foot #submit-result:not(:empty) {
-  margin-bottom: 12px;
+.detail-foot #submit-result:empty {
+  display: none;
+}
+
+.banner:focus {
+  outline: none;
+}
+
+.banner:focus-visible {
+  outline: 3px solid #f59e0b;
+}
+
+/* recommendation, next to the score */
+.rec {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 10px;
+  margin-top: 14px;
+  padding: 12px 14px;
+  border-radius: 14px;
+  background: var(--inset);
+}
+
+.rec-label {
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+}
+
+.rec-pill {
+  font-size: 13px;
+  padding: 3px 12px;
+}
+
+.rec-reason {
+  flex-basis: 100%;
+  margin: 0;
+  font-size: 14px;
+}
+
+/* settle: offer a refund or accept the claim */
+.settle,
+.settle-step {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.settle[hidden],
+.settle-step[hidden],
+.btn-row[hidden] {
+  display: none;
+}
+
+.settle-step {
+  padding: 14px;
+  border-radius: 14px;
+  background: var(--inset);
+}
+
+.btn-row {
+  display: flex;
+  gap: 10px;
+}
+
+.btn-row .btn {
+  flex: 1;
+  padding: 12px 16px;
+  font-size: 15px;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.field label {
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.money-input {
+  display: flex;
+  align-items: center;
+  border: 1px solid #d5d9e2;
+  border-radius: 12px;
+  background: #fff;
+}
+
+.money-input:focus-within {
+  outline: 3px solid #f59e0b;
+  outline-offset: 2px;
+}
+
+.currency {
+  padding: 0 4px 0 14px;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+.money-input input {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  background: transparent;
+  padding: 10px 12px 10px 6px;
+  font: inherit;
+  font-size: 20px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.money-input input:focus-visible {
+  outline: none;
+}
+
+.field textarea {
+  font: inherit;
+  font-size: 14px;
+  padding: 10px 12px;
+  border: 1px solid #d5d9e2;
+  border-radius: 12px;
+  resize: vertical;
+}
+
+.hint {
+  margin: 0;
+  font-size: 13px;
+}
+
+.confirm-text {
+  margin: 0;
+  font-size: 15px;
+}
+
+.confirm-text strong {
+  display: block;
+  margin-bottom: 2px;
+}
+
+/* toast */
+.toast {
+  position: fixed;
+  right: 20px;
+  bottom: 20px;
+  z-index: 20;
+  width: min(420px, calc(100vw - 24px));
+}
+
+.toast-card {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 14px 14px 14px 16px;
+  border-radius: 16px;
+  background: #fff;
+  box-shadow: 0 2px 6px rgba(15, 23, 42, 0.08), 0 16px 40px rgba(15, 23, 42, 0.18);
+}
+
+.toast-dot {
+  flex: none;
+  width: 10px;
+  height: 10px;
+  margin-top: 6px;
+  border-radius: 50%;
+  background: var(--green);
+  box-shadow: 0 0 0 4px #d1fae5;
+}
+
+.toast-bad .toast-dot {
+  background: var(--red);
+  box-shadow: 0 0 0 4px #fee2e2;
+}
+
+.toast-text {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 14px;
+  color: var(--muted);
+  word-break: break-word;
+}
+
+.toast-text strong {
+  font-size: 15px;
+  color: var(--ink);
+}
+
+.toast-close {
+  flex: none;
+  width: 32px;
+  height: 32px;
+  border: 0;
+  border-radius: 50%;
+  background: var(--inset);
+  color: var(--ink);
+  font-size: 20px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.toast-close:hover {
+  background: #e6e8ee;
 }
 
 .loading {
@@ -348,8 +586,8 @@ kbd {
 }
 
 .card {
-  border: 1px solid var(--line);
-  border-radius: 10px;
+  border-radius: 14px;
+  background: var(--inset);
   padding: 12px 14px;
   margin-bottom: 10px;
 }
@@ -598,7 +836,27 @@ kbd {
     align-items: flex-start;
   }
 
+  .brand {
+    flex: none;
+  }
+
   .stage {
     padding: 12px;
+  }
+
+  .detail-head kbd {
+    display: none; /* no keyboard on a phone */
+  }
+
+  /* one job per screen: the panel takes the whole phone */
+  .detail {
+    inset: 0;
+    width: 100vw;
+    border-radius: 0;
+  }
+
+  .toast {
+    right: 12px;
+    bottom: 12px;
   }
 }

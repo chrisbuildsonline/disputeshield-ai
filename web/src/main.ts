@@ -21,8 +21,9 @@ import {
   timeLeft,
   type Autopilot,
   type Dispute,
+  type SyncResult,
 } from "./api";
-import { createDetail } from "./detail";
+import { createDetail, errorText } from "./detail";
 
 ModuleRegistry.registerModules([AllCommunityModule]);
 takeTokenFromHash();
@@ -178,6 +179,46 @@ simulateBtn.addEventListener("click", async () => {
     if (!gateOpen()) statusEl.textContent = "Could not create the demo chargeback. Is demo mode on?";
   } finally {
     simulateBtn.disabled = false;
+  }
+});
+
+// ---- toast: one message at a time, in a live region that is always in the page ----
+const toastEl = byId("toast");
+let toastTimer = 0;
+
+function toast(tone: "good" | "bad", title: string, lines: string[], returnFocus: HTMLElement): void {
+  window.clearTimeout(toastTimer);
+  toastEl.innerHTML = `<div class="toast-card toast-${tone}"><span class="toast-dot" aria-hidden="true"></span>
+    <div class="toast-text"><strong>${esc(title)}</strong>${lines.map((l) => `<span>${esc(l)}</span>`).join("")}</div>
+    <button class="toast-close" type="button" aria-label="Dismiss">&times;</button></div>`;
+  const hide = () => {
+    const hadFocus = toastEl.contains(document.activeElement);
+    toastEl.innerHTML = "";
+    if (hadFocus) returnFocus.focus();
+  };
+  toastEl.querySelector("button")?.addEventListener("click", hide);
+  if (tone === "good") toastTimer = window.setTimeout(hide, 10000); // errors stay until dismissed
+}
+
+const syncBtn = byId<HTMLButtonElement>("sync-btn");
+
+syncBtn.addEventListener("click", async () => {
+  syncBtn.disabled = true;
+  syncBtn.textContent = "Syncing...";
+  try {
+    const r = await api<SyncResult>("/api/paypal/sync", "POST");
+    toast(
+      "good",
+      `Synced ${r.count} dispute${r.count === 1 ? "" : "s"} from PayPal ${r.mode}`,
+      [`Fetched at ${new Date(r.fetched_at).toLocaleTimeString()}`, r.debug_id ? `PayPal debug id ${r.debug_id}` : "PayPal sent no debug id"],
+      syncBtn,
+    );
+    await refresh();
+  } catch (e) {
+    if (!gateOpen()) toast("bad", "Not synced", [errorText(e, "sync")], syncBtn);
+  } finally {
+    syncBtn.disabled = false;
+    syncBtn.textContent = "Sync from PayPal";
   }
 });
 

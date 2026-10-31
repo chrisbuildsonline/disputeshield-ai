@@ -23,6 +23,7 @@
           <label>Threshold <input id="autopilot-threshold" type="number" min="0" max="100" step="1" value="85" /></label>
           <span id="autopilot-error" class="urgent" role="alert"></span>
         </div>
+        <button id="sync-btn" class="btn" type="button">Sync from PayPal</button>
         <button id="simulate-btn" class="btn btn-primary" type="button" hidden>Simulate chargeback</button>
       </div>
     </header>
@@ -61,12 +62,44 @@
         <div id="detail-body" class="detail-body"></div>
         <div class="detail-foot">
           <div id="submit-result" role="status" aria-live="polite"></div>
+          <div id="settle" class="settle" hidden>
+            <form id="offer-form" class="settle-step" novalidate hidden>
+              <div class="field">
+                <label for="offer-amount">Refund amount</label>
+                <div class="money-input">
+                  <span id="offer-currency" class="currency">USD</span>
+                  <input id="offer-amount" type="number" inputmode="decimal" step="0.01" min="0.01" aria-describedby="offer-max" />
+                </div>
+                <p id="offer-max" class="hint muted"></p>
+              </div>
+              <div class="field">
+                <label for="offer-note">Note to the buyer</label>
+                <textarea id="offer-note" rows="3" maxlength="2000"></textarea>
+              </div>
+              <div class="btn-row">
+                <button id="offer-send" class="btn btn-primary" type="submit">Send offer</button>
+                <button id="offer-cancel" class="btn" type="button">Cancel</button>
+              </div>
+            </form>
+            <div id="accept-confirm" class="settle-step" hidden>
+              <p id="accept-question" class="confirm-text"></p>
+              <div class="btn-row">
+                <button id="accept-yes" class="btn btn-primary" type="button">Yes, accept and refund</button>
+                <button id="accept-cancel" class="btn" type="button">Cancel</button>
+              </div>
+            </div>
+            <div id="settle-actions" class="btn-row">
+              <button id="offer-btn" class="btn" type="button">Offer refund</button>
+              <button id="accept-btn" class="btn" type="button">Accept claim</button>
+            </div>
+          </div>
           <button id="submit-btn" class="btn btn-primary btn-wide" type="button" disabled>Submit evidence</button>
         </div>
       </aside>
     </main>
 
     <footer class="foot"><span id="status" role="status">Checking API...</span></footer>
+    <div id="toast" class="toast" role="status" aria-live="polite"></div>
     <script type="module" src="./src/main.ts"></script>
   </body>
 </html>

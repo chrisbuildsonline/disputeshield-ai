@@ -6,12 +6,33 @@ import {
   needsAction,
   reasonLabel,
   statusLabel,
+  type ActResult,
   type AuditRow,
   type Dispute,
   type Evidence,
+  type RecAction,
   type Score,
   type SubmitResult,
 } from "./api";
+
+const DEMO_LABEL = "Demo mode: nothing was sent to PayPal";
+const DEFAULT_OFFER_NOTE = "We're sorry this order didn't work out for you. We'd like to settle this with the refund offered here.";
+
+const REC: Record<RecAction, [label: string, tone: string]> = {
+  fight: ["Fight", "badge-green"],
+  offer_refund: ["Offer refund", "badge-amber"],
+  accept: ["Accept", "badge-red"],
+};
+
+/** Audit actions that hold the one-act-per-dispute claim: after these nothing more can be sent. */
+const ANSWERED = new Set(["submitted", "accepted", "accept_unconfirmed", "offer_unconfirmed"]);
+
+/** The newest evidence submission, accept or offer in the audit trail (rows are oldest first). */
+function lastAct(rows: AuditRow[]): AuditRow | undefined {
+  return [...rows].reverse().find((a) => a.action === "submitted" || a.action === "accepted" || a.action === "offered");
+}
+
+const where = (d: Record<string, unknown>) => (d.mode === "paypal" ? " in PayPal sandbox" : " (demo mode, not sent to PayPal)");
 
 const el = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 
@@ -40,6 +61,19 @@ function auditText(a: AuditRow): string {
       return `Submit failed: ${String(d.error ?? "")}`;
     case "synced":
       return "Synced from PayPal";
+    case "accepted":
+      return `Claim accepted${where(d)}`;
+    case "offered": {
+      const amt = (d.amount ?? {}) as { value?: string; currency_code?: string };
+      return `Refund offer of ${money(amt.value ?? null, amt.currency_code ?? null) || "an amount"} made${where(d)}`;
+    }
+    case "accept_failed":
+      return `Accept failed: ${String(d.error ?? "")}`;
+    case "offer_failed":
+      return `Offer failed: ${String(d.error ?? "")}`;
+    case "accept_unconfirmed":
+    case "offer_unconfirmed":
+      return "Sent to PayPal but not confirmed: run Sync from PayPal to check";
     case "autopilot_started":
       return "Autopilot started";
     case "autopilot_evidence":
@@ -87,10 +121,13 @@ function renderScore(score: Score): string {
         <span class="points">${f.met ? "+" : ""}${f.points}<span class="sr-only"> points</span></span></li>`,
     )
     .join("");
+  const [recLabel, recTone] = REC[score.recommendation.action];
   return `<div class="score">
       <div class="score-num ${tone}" aria-label="Win probability ${score.probability} percent">${score.probability}%</div>
       <div class="score-bar" aria-hidden="true"><span class="${tone}" style="width:${score.probability}%"></span></div>
     </div>
+    <div class="rec"><span class="rec-label">Recommended</span><span class="badge rec-pill ${recTone}">${recLabel}</span>
+      <p class="rec-reason muted">${esc(score.recommendation.reason)}</p></div>
     <ul class="factors"><li class="factor base"><span class="mark" aria-hidden="true">&#8226;</span>
       <span class="factor-text"><span>Starting point</span><span class="muted">Baseline for this kind of dispute</span></span>
       <span class="points">${score.base}</span></li>${factors}</ul>`;
@@ -113,12 +150,28 @@ function renderAudit(rows: AuditRow[]): string {
     .join("")}</ol>`;
 }
 
-function errorText(e: unknown): string {
+export type Act = "submit" | "accept" | "offer" | "sync";
+
+/** A plain sentence for a failed call. The server's own words are kept where they are already plain. */
+export function errorText(e: unknown, act: Act = "submit"): string {
   if (!(e instanceof ApiError)) return "Something went wrong. Please try again.";
   const d = e.detail;
   const text = typeof d === "string" ? d : "";
-  if (e.status === 409) return "This dispute was already submitted or is closed, so nothing more can be sent.";
-  if (e.status === 422) return `Evidence can't be submitted yet: ${text || "the documents were not accepted"}.`;
+  if (e.status === 409) {
+    if (text.startsWith("PayPal keys are not set")) return text;
+    if (text === "dispute is closed") return "This dispute is closed, so nothing more can be sent.";
+    if (text === "an offer is already waiting for the buyer") return "An offer is already waiting for the buyer's answer, so a second one can't be made.";
+    if (text === "already submitted or acted on") return "This dispute was already answered (evidence sent or the claim accepted), so nothing more can be sent.";
+    return "This dispute was already submitted or is closed, so nothing more can be sent.";
+  }
+  if (e.status === 422) {
+    if (act === "offer") {
+      const why = text.startsWith("amount must be") ? "enter an amount above 0 with at most two decimals" : text || "check the amount and the note";
+      return `The offer was not sent: ${why}.`;
+    }
+    if (act === "accept") return `The claim was not accepted: ${text || "check the note"}.`;
+    return `Evidence can't be submitted yet: ${text || "the documents were not accepted"}.`;
+  }
   if (e.status === 502 && d && typeof d === "object") {
     const o = d as { message?: string; debug_id?: string };
     return `PayPal turned the request down: ${o.message ?? "unknown error"}${o.debug_id ? ` (debug id ${o.debug_id})` : ""}. Nothing was lost, you can try again.`;
@@ -149,6 +202,19 @@ export function createDetail(opts: { onClose: (id: string) => void; onSubmitted:
   let sending = false;
   let loadError: string | null = null;
 
+  const settle = el("settle");
+  const settleActions = el("settle-actions");
+  const offerBtn = el<HTMLButtonElement>("offer-btn");
+  const acceptBtn = el<HTMLButtonElement>("accept-btn");
+  const offerForm = el<HTMLFormElement>("offer-form");
+  const offerAmount = el<HTMLInputElement>("offer-amount");
+  const offerNote = el<HTMLTextAreaElement>("offer-note");
+  const offerSend = el<HTMLButtonElement>("offer-send");
+  const confirmBox = el("accept-confirm");
+  const acceptYes = el<HTMLButtonElement>("accept-yes");
+  let acting: "accept" | "offer" | null = null;
+  let acted: "accepted" | "offered" | null = null; // set on success, before the audit poll catches up
+
   function paintHeader(): void {
     if (!current) return;
     el("detail-title").textContent = `Dispute ${current.id}`;
@@ -158,20 +224,124 @@ export function createDetail(opts: { onClose: (id: string) => void; onSubmitted:
     el("detail-flag").innerHTML = why?.length
       ? `<div class="banner banner-bad" role="status"><strong>Needs review</strong><ul>${why.map((r) => `<li>${esc(r)}</li>`).join("")}</ul></div>`
       : "";
-    const submittedEntry = audit.find((a) => a.action === "submitted");
-    const done = !needsAction(current) || sending || !!submittedEntry;
+    const last = lastAct(audit);
+    const did = acted ?? last?.action;
+    const closed = current.status === "RESOLVED" || !!current.outcome;
+    const offerWaiting = current.status === "WAITING_FOR_BUYER_RESPONSE" || did === "offered";
+    const answered = acted === "accepted" || audit.some((a) => ANSWERED.has(a.action));
+    const busy = sending || acting !== null;
+
+    const done = !needsAction(current) || busy || audit.some((a) => a.action === "submitted");
     button.disabled = done || !score;
-    button.classList.toggle("btn-done", !needsAction(current));
-    button.textContent = sending ? "Submitting..." : done && !needsAction(current) ? "Evidence submitted" : "Submit evidence";
-    if (submittedEntry && !result.dataset.shown) {
-      const demo = submittedEntry.detail.mode !== "paypal";
-      showBanner(demo ? "Demo mode: nothing was sent to PayPal" : "Sent to PayPal sandbox", `Status: ${statusLabel(current.status)}`, demo ? "info" : "good");
+    button.classList.toggle("btn-done", !needsAction(current) && did !== "offered");
+    button.textContent = sending
+      ? "Submitting..."
+      : !needsAction(current)
+        ? did === "accepted"
+          ? "Claim accepted"
+          : did === "offered" && offerWaiting
+            ? "Offer waiting for buyer"
+            : closed && did !== "submitted"
+              ? "Closed"
+              : "Evidence submitted"
+        : "Submit evidence";
+
+    // below the fight line the settle actions take over the dark pill; Submit evidence stays as the way to fight anyway
+    const rec = score?.recommendation.action;
+    const low = !!rec && rec !== "fight";
+    settle.hidden = !low;
+    button.classList.toggle("btn-primary", !low);
+    button.classList.toggle("btn-quiet", low && needsAction(current));
+    offerBtn.classList.toggle("btn-primary", rec === "offer_refund");
+    acceptBtn.classList.toggle("btn-primary", rec === "accept");
+    acceptBtn.disabled = closed || answered || busy;
+    offerBtn.disabled = acceptBtn.disabled || offerWaiting;
+
+    if (last && !result.dataset.shown) {
+      const demo = last.detail.mode !== "paypal";
+      const what = last.action === "accepted" ? " · claim accepted" : last.action === "offered" ? " · refund offered" : "";
+      showBanner(demo ? DEMO_LABEL : "Sent to PayPal sandbox", `Status: ${statusLabel(current.status)}${what}`, demo ? "info" : "good");
     }
   }
 
   function showBanner(title: string, sub: string, tone: "info" | "good" | "bad"): void {
     result.dataset.shown = "1";
-    result.innerHTML = `<div class="banner banner-${tone}"><strong>${esc(title)}</strong><span>${esc(sub)}</span></div>`;
+    result.innerHTML = `<div class="banner banner-${tone}" tabindex="-1"><strong>${esc(title)}</strong><span>${esc(sub)}</span></div>`;
+  }
+
+  function closeSteps(): void {
+    offerForm.hidden = true;
+    confirmBox.hidden = true;
+    settleActions.hidden = false;
+  }
+
+  function openOffer(): void {
+    if (!current) return;
+    const d = current;
+    const max = d.amount_value ?? "";
+    closeSteps();
+    settleActions.hidden = true;
+    offerForm.hidden = false;
+    el("offer-currency").textContent = d.currency ?? "USD";
+    offerAmount.value = max;
+    if (max) offerAmount.max = max;
+    else offerAmount.removeAttribute("max");
+    el("offer-max").textContent = max ? `Up to ${money(max, d.currency)}, the disputed amount` : "";
+    offerNote.value = DEFAULT_OFFER_NOTE;
+    offerAmount.focus();
+  }
+
+  function openConfirm(): void {
+    if (!current) return;
+    const amt = money(current.amount_value, current.currency) || "the disputed amount";
+    closeSteps();
+    settleActions.hidden = true;
+    confirmBox.hidden = false;
+    el("accept-question").innerHTML = `<strong>Accept the claim?</strong> <span>The buyer gets ${esc(amt)} back and the dispute closes. This can't be undone.</span>`;
+    acceptYes.textContent = `Yes, accept and refund ${amt}`;
+    el("accept-cancel").focus(); // the safe choice has focus: Enter alone never gives money back
+  }
+
+  async function act(kind: "accept" | "offer", payload: Record<string, string>): Promise<void> {
+    if (!current || acting) return;
+    const d = current;
+    acting = kind;
+    result.innerHTML = "";
+    delete result.dataset.shown;
+    const sendLabel = offerSend.textContent;
+    const yesLabel = acceptYes.textContent;
+    offerSend.textContent = "Sending...";
+    acceptYes.textContent = "Accepting...";
+    offerSend.disabled = acceptYes.disabled = true;
+    paintHeader();
+    let ok = false;
+    try {
+      const r = await api<ActResult>(`/api/disputes/${encodeURIComponent(d.id)}/${kind}`, "POST", payload);
+      ok = true;
+      if (current?.id === d.id) {
+        current = { ...d, status: r.status };
+        acted = kind === "accept" ? "accepted" : "offered";
+        closeSteps();
+        showBanner(r.label, `Status: ${statusLabel(r.status)} · ${kind === "accept" ? "claim accepted" : "refund offered"}`, r.demo ? "info" : "good");
+      }
+      opts.onSubmitted();
+    } catch (e) {
+      if (current?.id === d.id) {
+        if (kind === "accept") closeSteps(); // an offer keeps its form so the amount can be fixed
+        showBanner(kind === "offer" ? "Offer not sent" : "Claim not accepted", errorText(e, kind), "bad");
+      }
+    } finally {
+      acting = null;
+      offerSend.textContent = sendLabel;
+      acceptYes.textContent = yesLabel;
+      offerSend.disabled = acceptYes.disabled = false;
+      if (current?.id === d.id) {
+        paintHeader();
+        if (ok || kind === "accept") result.querySelector<HTMLElement>(".banner")?.focus();
+        else offerAmount.focus();
+        void refreshAudit();
+      }
+    }
   }
 
   function paintBody(): void {
@@ -253,6 +423,21 @@ export function createDetail(opts: { onClose: (id: string) => void; onSubmitted:
   }
 
   button.addEventListener("click", () => void submit());
+  offerBtn.addEventListener("click", openOffer);
+  acceptBtn.addEventListener("click", openConfirm);
+  el("offer-cancel").addEventListener("click", () => {
+    closeSteps();
+    offerBtn.focus();
+  });
+  el("accept-cancel").addEventListener("click", () => {
+    closeSteps();
+    acceptBtn.focus();
+  });
+  acceptYes.addEventListener("click", () => void act("accept", {}));
+  offerForm.addEventListener("submit", (ev) => {
+    ev.preventDefault();
+    void act("offer", { amount: offerAmount.value.trim(), note: offerNote.value });
+  });
   el("detail-close").addEventListener("click", () => close());
   panel.addEventListener("keydown", (ev) => {
     if (ev.key === "Escape") {
@@ -275,6 +460,8 @@ export function createDetail(opts: { onClose: (id: string) => void; onSubmitted:
       audit = [];
       auditJson = "";
       sending = false;
+      acted = null;
+      closeSteps();
       result.innerHTML = "";
       delete result.dataset.shown;
       panel.hidden = false;

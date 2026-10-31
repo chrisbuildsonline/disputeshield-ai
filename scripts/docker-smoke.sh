@@ -41,4 +41,20 @@ docker rm -f "$PLAIN" > /dev/null 2>&1 || true
 docker run -d --name "$PLAIN" -p 8789:8000 "$IMAGE" > /dev/null
 wait_health http://127.0.0.1:8789
 curl -fs http://127.0.0.1:8789/api/config | grep -q '"demo_mode":false' || { echo "bare image has demo mode on" >&2; exit 1; }
+
+# a judge without Ollama: the seeded sample cases show the recorded model reads, not the regex fallback
+docker rm -f "$PLAIN" > /dev/null 2>&1 || true
+docker run -d --name "$PLAIN" -p 8789:8000 -e DISPUTESHIELD_DEMO_MODE=1 -e DISPUTESHIELD_OPERATOR_TOKEN=smoke-token "$IMAGE" > /dev/null
+wait_health http://127.0.0.1:8789
+curl -fs --max-time 60 -X POST -H "Authorization: Bearer smoke-token" http://127.0.0.1:8789/api/demo/seed | python3 -c '
+import json, sys
+print(" ".join(d["id"] for d in json.load(sys.stdin)["disputes"]))
+' > "$DOCKER_CONFIG/ids"
+for id in $(cat "$DOCKER_CONFIG/ids"); do
+  curl -fs -H "Authorization: Bearer smoke-token" "http://127.0.0.1:8789/api/disputes/$id/documents" | python3 -c '
+import json, sys
+sources = [x["evidence"]["source"] for x in json.load(sys.stdin)]
+assert sources and set(sources) == {"recorded"}, f"sources {sources}"
+' || { echo "no-Ollama seed did not use the recorded reads" >&2; exit 1; }
+done
 echo "smoke ok"

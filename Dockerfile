@@ -15,6 +15,8 @@ COPY app ./app
 COPY tests ./tests
 COPY samples ./samples
 COPY scripts ./scripts
+COPY web ./web
+COPY docs/screenshots ./docs/screenshots
 # the repo-wiring tests (README, compose, scripts) read these from the repo root
 COPY README.md docker-compose.yml playwright.config.ts package.json tsconfig.json .gitignore .env.example ./
 COPY --from=web /src/app/static ./app/static

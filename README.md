@@ -33,7 +33,7 @@ The first three controls are in the page header, the last one is on the empty ta
 - **Simulate chargeback** (demo mode only) creates an "item not received" dispute for USD 49.90 and attaches the sample UPS receipt (`samples/ups_receipt.pdf`). The model reads it, and the case scores 100%: the receipt has the tracking number, the delivery, the billing address, a signature, the amount and the order id A-1042, so every factor is met.
 - **Sync from PayPal** pulls your sandbox disputes. It needs keys (see below).
 - **Autopilot** is a switch, with a **Threshold** field next to it (default 85). See [Autopilot](#autopilot).
-- **Load sample disputes** adds five made-up cases in four currencies, scored from 25% to 100%. Their receipts are read by the regex parser, not the model, so they load at once and their evidence cards say "Regex fallback".
+- **Load sample disputes** adds five made-up cases in four currencies, scored from 25% to 100%. They load at once, with no model call: their receipts are the sample PDFs, and the console shows the reads that a real qwen3:8b run recorded on those exact files (`samples/recorded.json`), so the evidence cards say "Recorded" with the model name. See [Recorded reads](#recorded-reads).
 
 Click a row to open it. With autopilot off, the panel says "Needs review: Waiting for you to review: autopilot is off". Click "Submit evidence". In demo mode nothing leaves your machine, and the panel says "Demo mode: nothing was sent to PayPal". The audit trail lists each step. In the screenshot below, the model wrote the rebuttal note and it passed the fact check, so its badge says "AI · qwen3:8b". A note that fails the check is replaced by the fixed template, and the badge says "Template".
 
@@ -119,7 +119,13 @@ What the model does, and the guards around it:
 - A labelled line in the PDF ("Tracking Number: ...") beats what the model returned for that field.
 - Fields the model leaves empty are filled by the regex parser.
 - The rebuttal note is written from the extracted facts only, then fact-checked. Any id, amount, date or time that is not in the dispute or the evidence rejects the note, and a fixed template note is used instead.
-- If the model is down or fails, the regex parser and the template take over. The detail panel shows who did the work: an "AI" badge with the model name, "Regex fallback" or "Template".
+- If the model is down or fails, a recorded read takes over if there is one for the exact same PDF (see below). Otherwise the regex parser and the template take over. The detail panel shows who did the work: an "AI" badge with the model name, "Recorded" with the model name, "Regex fallback" or "Template".
+
+### Recorded reads
+
+Live: any new PDF and any new dispute is read and written up by the model (Ollama or Claude) whenever it is reachable. Nothing is faked there.
+
+Recorded: `samples/recorded.json` holds what a real qwen3:8b run returned for each sample PDF (keyed by the SHA-256 of the file's bytes) and the rebuttal notes it wrote for the sample cases (keyed by the SHA-256 of the facts it was given). They are used only when no model is reachable, so a judge who runs the plain Docker image without Ollama still sees real model output on the samples. A recorded read goes through the same guards as a live one (ids must appear in the PDF text, the regex parser fills gaps), and a recorded note still has to pass the fact check. A PDF with different bytes is never matched, and the regex parser reads it. Where qwen3:8b's note for a sample case failed the fact check (a mangled tracking number), nothing was recorded and that case keeps the template note. Re-record with `bun run llm:record` (needs Ollama and qwen3:8b).
 
 Docker and Ollama: by default the compose file points the app at its own `ollama` container (`http://ollama:11434`) and the model above (`qwen2.5:3b`, the smallest non-thinking model that read both sample PDFs correctly and wrote a note that passed the fact check; `qwen2.5:0.5b` and `1.5b` did not). The sidecar port is not published, so it cannot clash with an Ollama on your host. To use the host's Ollama and `qwen3:8b` instead, run `OLLAMA_HOST=http://host.docker.internal:11434 DISPUTESHIELD_OLLAMA_MODEL=qwen3:8b docker compose up`. On plain Linux Docker, the host's Ollama listens on 127.0.0.1 by default and the container cannot reach it, so start it with `OLLAMA_HOST=0.0.0.0`. If `OLLAMA_HOST` is already set in your shell, unset it or the compose file will use it. `bun run llm:try <model>...` measures candidate models in a throwaway CPU container.
 

@@ -158,12 +158,12 @@ h1{font:700 36px/1.15 Inter,system-ui,sans-serif;letter-spacing:-.02em;margin:0 
   // ---- 5. voice lines, synthesized up front so the recording never waits on edge-tts ----
   const N = {
     title: tts('DisputeShield AI defends PayPal chargebacks for small online merchants. When a buyer says an item never arrived, the proof is usually sitting in a carrier receipt. But writing it up by hand is slow, and an unanswered dispute is a lost dispute: the merchant loses the sale, and pays a fee on top. DisputeShield reads the evidence, scores the case, and sends it.'),
-    simulate: tts('Here is the real console, running on my machine in demo mode. I click Simulate chargeback. A new item not received dispute for forty nine ninety lands in the AG Grid table, highlighted red because it is contested and still needs an answer. It arrives with a UPS receipt as a PDF, and the win probability is already ninety four percent.'),
+    simulate: tts('Here is the real console, running on my machine in demo mode. I click Simulate chargeback. A new item not received dispute for forty nine ninety lands in the AG Grid table, highlighted red because it is contested and still needs an answer. It arrives with a UPS receipt as a PDF, and the win probability is already one hundred percent.'),
     evidence: tts('Opening the dispute shows what the AI read from the UPS receipt. A local model, qwen three eight b, running on Ollama, pulls out the carrier, the tracking number, the delivery time, the address and the signature. The badge says which model did the reading. A tracking number that is not in the PDF text is dropped, so the model cannot invent one.'),
-    score: tts('The win probability is not the model\'s opinion. A fixed rulebook adds points for each piece of proof: tracking, delivery confirmed, delivered to the billing address, a signature, and a matching amount. Here it comes to ninety four percent. The rebuttal note is written from the same facts, and fact checked before it is used.'),
+    score: tts('The win probability is not the model\'s opinion. A fixed rulebook adds points for each piece of proof: tracking, delivery confirmed, delivered to the billing address, a signature, a matching amount, and the order id. Here it comes to one hundred percent. The rebuttal note is written from the same facts, and fact checked before it is used.'),
     submit: tts('One click on Submit evidence sends the dossier. This is demo mode, so nothing leaves the machine, and the panel says so in plain words. With sandbox keys, the same click calls the PayPal provide evidence endpoint.'),
     audit: tts('Every step lands in the audit trail: the chargeback received, the document added, and the evidence submitted. The status is now under review, and the row is no longer red.'),
-    autopilot: tts('Now autopilot. I switch it on, with the threshold at eighty five, and simulate another chargeback. I click nothing else. The agent scores the case at ninety four, above the threshold, and submits it by itself, with each step in the audit trail. Below the threshold it would flag the case as needs review instead.'),
+    autopilot: tts('Now autopilot. I switch it on, with the threshold at eighty five, and simulate another chargeback. I click nothing else. The agent scores the case at one hundred, above the threshold, and submits it by itself, with each step in the audit trail. Below the threshold it would flag the case as needs review instead.'),
     how: tts('How it works. Disputes arrive as PayPal webhooks, checked with PayPal\'s signature verification, and evidence goes back through the Disputes API. The AI is local, qwen three on Ollama, with guards that drop facts not found in the PDF, and a fallback if the model is down. The score is deterministic arithmetic. Every API route needs an operator token, and the app runs in Docker.'),
     tests: tts(`Before this recording, the test suite ran. ${pyPassed} Python tests passed, and the type checks are clean.`),
     outro: tts('DisputeShield AI. Do not lose the chargebacks you could win. The code is on GitHub, the link is on screen.'),
@@ -207,7 +207,7 @@ h1{font:700 36px/1.15 Inter,system-ui,sans-serif;letter-spacing:-.02em;margin:0 
   await Bun.sleep(900);
   await narrate(N.title);
 
-  // simulate: the contested row, red, 94%
+  // simulate: the contested row, red, 100%
   await page.goto(`${BASE}/#token=${TOKEN}`);
   await page.getByText('Demo mode', { exact: true }).waitFor();
   let id = '';
@@ -216,8 +216,8 @@ h1{font:700 36px/1.15 Inter,system-ui,sans-serif;letter-spacing:-.02em;margin:0 
       id = await simulate();
       const row = page.locator(`.ag-row[row-id="${id}"]`);
       await row.waitFor(WAIT);
-      const win = await row.locator('[col-id="win"]').filter({ hasText: '94%' }).waitFor(WAIT).then(() => '94%', () => 'not 94%');
-      if (win !== '94%') throw new Error(`narration says 94%, the grid shows ${await row.locator('[col-id="win"]').innerText()}`);
+      const win = await row.locator('[col-id="win"]').filter({ hasText: '100%' }).waitFor(WAIT).then(() => '100%', () => 'not 100%');
+      if (win !== '100%') throw new Error(`narration says 100%, the grid shows ${await row.locator('[col-id="win"]').innerText()}`);
       if (!(await row.getAttribute('class'))?.includes('row-contested')) throw new Error('the new row is not highlighted as contested');
     },
   ]);
@@ -240,7 +240,7 @@ h1{font:700 36px/1.15 Inter,system-ui,sans-serif;letter-spacing:-.02em;margin:0 
   await narrate(N.score, [
     async () => {
       const shown = await panel.locator('.score-num').first().innerText();
-      if (shown.trim() !== '94%') throw new Error(`narration says 94%, the panel shows ${shown}`);
+      if (shown.trim() !== '100%') throw new Error(`narration says 100%, the panel shows ${shown}`);
       await glide('#h-score');
     },
     () => glide('#h-dossier'),
@@ -288,7 +288,7 @@ h1{font:700 36px/1.15 Inter,system-ui,sans-serif;letter-spacing:-.02em;margin:0 
       await page.locator(`.ag-row[row-id="${id2}"] [col-id="reason"]`).click();
       const p2 = detail(id2);
       await p2.getByText('Autopilot submitted the evidence').waitFor(WAIT);
-      await p2.getByText(/Autopilot scored the case 94% \(threshold 85%\)/).waitFor();
+      await p2.getByText(/Autopilot scored the case 100% \(threshold 85%\)/).waitFor();
       await glide('#h-audit');
     },
   ]);

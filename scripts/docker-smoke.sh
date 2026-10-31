@@ -32,7 +32,7 @@ d = json.load(sys.stdin)
 sources = [x["evidence"]["source"] for x in d["documents"]]
 assert sources and set(sources) == {"ollama"}, f"evidence sources {sources}"
 assert d["dossier"]["note_source"] == "ollama", "note is not model-written"
-assert d["probability"] == 94, "demo score " + str(d["probability"]) + " is not the fixed 94"
+assert d["probability"] == 100, "demo score " + str(d["probability"]) + " is not the fixed 100"
 ' || { echo "sidecar model did not do the extraction and note" >&2; exit 1; }
 
 # the bare image, no env at all, must fail closed: demo mode off

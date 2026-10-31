@@ -119,8 +119,10 @@ def test_ollama_extraction_id_guard(monkeypatch: pytest.MonkeyPatch) -> None:
     fake_chat(monkeypatch, {"tracking_number": "1Z000000000000000X", "order_id": "ZZ-999", "signed_by": "J Smith"})
     r = extract(UPS)
     assert r.source == "ollama"
-    assert r.order_id is None and r.signed_by == "J Smith"
-    assert r.tracking_number == "1Z999AA10123456784"  # the invented id is dropped; the regex value from the text fills in
+    assert r.signed_by == "J Smith"
+    # the invented ids are dropped; the regex values from the text fill in
+    assert r.tracking_number == "1Z999AA10123456784"
+    assert r.order_id == "A-1042"
 
 
 def test_ollama_extraction_fills_gaps_from_regex_and_drops_junk(monkeypatch: pytest.MonkeyPatch) -> None:

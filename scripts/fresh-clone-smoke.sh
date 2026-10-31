@@ -33,7 +33,7 @@ trap cleanup EXIT
 code() { curl -s -o /dev/null -w '%{http_code}' "$@"; }
 json() { python3 -c 'import json,sys; print(json.load(sys.stdin)[sys.argv[1]])' "$1"; }
 
-# check_server <base url> <token> <label>: the gate, the page, and the demo chargeback scoring 94
+# check_server <base url> <token> <label>: the gate, the page, and the demo chargeback scoring 100
 check_server() {
   local base=$1 token=$2 label=$3 dispute prob
   STEP="$label: 401 without the token"
@@ -45,9 +45,9 @@ check_server() {
   curl -fs "$base/api/config" | grep -q '"demo_mode":true' || { echo "demo mode is not on" >&2; return 1; }
   STEP="$label: demo chargeback"
   dispute=$(curl -fs --max-time 120 -X POST -H "Authorization: Bearer $token" "$base/api/demo/chargeback" | json id)
-  STEP="$label: demo chargeback scores 94"
+  STEP="$label: demo chargeback scores 100"
   prob=$(curl -fs --max-time 180 -H "Authorization: Bearer $token" "$base/api/disputes/$dispute/score" | json probability)
-  [ "$prob" = 94 ] || { echo "expected score 94, got $prob" >&2; return 1; }
+  [ "$prob" = 100 ] || { echo "expected score 100, got $prob" >&2; return 1; }
   echo "$label: ok (dispute $dispute scored $prob)"
 }
 

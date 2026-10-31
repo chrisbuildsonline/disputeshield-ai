@@ -10,6 +10,7 @@ OUT = Path(__file__).resolve().parent.parent / "samples"
 
 UPS_LINES = [
     "Carrier: UPS",
+    "Order Number: A-1042",
     "Tracking Number: 1Z999AA10123456784",
     "Service: UPS Ground",
     "Status: Delivered",

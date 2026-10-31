@@ -75,24 +75,25 @@ def test_demo_chargeback_needs_demo_mode(client: TestClient, monkeypatch: pytest
     assert client.get("/api/disputes").json() == []
 
 
-def test_score_for_demo_dispute_is_94(client: TestClient) -> None:
+def test_score_for_demo_dispute_is_100(client: TestClient) -> None:
     did = simulate(client)["id"]
     r = client.get(f"/api/disputes/{did}/score")
     assert r.status_code == 200
     s = r.json()
-    assert s["probability"] == 94
-    assert sum(f["points"] for f in s["factors"]) + s["base"] == 94
+    assert s["probability"] == 100
+    assert sum(f["points"] for f in s["factors"]) + s["base"] == 100
     by_label = {f["label"]: f for f in s["factors"]}
     assert by_label["Delivered to the billing address"]["met"] is True
     assert by_label["Delivered to the billing address"]["points"] == 25
-    assert by_label["Order ID on file"]["met"] is False
-    assert by_label["Order ID on file"]["points"] == 0
+    assert by_label["Order ID on file"]["met"] is True
+    assert by_label["Order ID on file"]["points"] == 6
     assert all(f["reason"] for f in s["factors"])
     assert [x["name"] for x in s["documents"]] == ["ups_receipt.pdf"]
     assert s["documents"][0]["evidence"]["source"] == "fallback"
     d = s["dossier"]
     assert d["note_source"] == "template"
     assert "1Z999AA10123456784" in d["note"]
+    assert "USD 49.90" in d["note"]
     assert d["files"] == ["ups_receipt.pdf"]
 
 
@@ -113,7 +114,7 @@ def test_list_has_win_probability(client: TestClient) -> None:
     bare = bare_dispute(client)
     did = simulate(client)["id"]
     rows = {r["id"]: r for r in client.get("/api/disputes").json()}
-    assert rows[did]["win_probability"] == 94
+    assert rows[did]["win_probability"] == 100
     assert rows[bare]["win_probability"] is None
     assert "billing_address" not in rows[did]
 
@@ -143,7 +144,7 @@ def test_submit_after_demo_chargeback(client: TestClient) -> None:
     did = simulate(client)["id"]
     r = client.post(f"/api/disputes/{did}/submit")
     assert r.status_code == 200
-    assert r.json()["probability"] == 94
+    assert r.json()["probability"] == 100
     assert r.json()["status"] == "UNDER_REVIEW"
     row = {x["id"]: x for x in client.get("/api/disputes").json()}[did]
     assert row["status"] == "UNDER_REVIEW"

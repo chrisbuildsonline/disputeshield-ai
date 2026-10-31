@@ -110,30 +110,36 @@ def test_autopilot_on_submits_the_demo_chargeback(client: TestClient) -> None:
     log = {a["action"]: a["detail"] for a in audit(client, did)}
     assert log["autopilot_evidence"]["documents"] == 1
     assert "tracking_number" in log["autopilot_evidence"]["fields"]
-    assert log["autopilot_scored"] == {"probability": 94, "threshold": 85}
+    assert log["autopilot_scored"] == {"probability": 100, "threshold": 85}
     assert row(client, did)["review_reasons"] is None
     # a submission row exists: a second claim is refused
     assert client.post(f"/api/disputes/{did}/submit").status_code == 409
 
 
 def test_autopilot_off_flags_for_review(client: TestClient) -> None:
-    """Given autopilot off, when a chargeback arrives, then it is flagged "Autopilot is off" and not sent."""
+    """Given autopilot off, when a chargeback arrives, then it is flagged "Waiting for you to review: autopilot is off" and not sent."""
     did = simulate(client)
     assert client.get(f"/api/disputes/{did}").json()["status"] == "OPEN"
     flagged = [a for a in audit(client, did) if a["action"] == "autopilot_flagged"]
-    assert [f["detail"]["reasons"] for f in flagged] == [["Autopilot is off"]]
+    assert [f["detail"]["reasons"] for f in flagged] == [["Waiting for you to review: autopilot is off"]]
     assert "autopilot_submitted" not in actions(client, did)
-    assert row(client, did)["review_reasons"] == ["Autopilot is off"]
+    assert row(client, did)["review_reasons"] == ["Waiting for you to review: autopilot is off"]
 
 
 def test_below_threshold_flags_with_unmet_factors(client: TestClient) -> None:
-    """Given threshold 95 and a 94% case, when it arrives, then it is flagged with the gap and each unmet factor."""
-    configure(client, True, 95)
-    did = simulate(client)
+    """Given threshold 100 and a case below it, when its evidence arrives, then it is flagged with the gap and each unmet factor."""
+    configure(client, True, 100)
+    e = created_event()
+    did = e["resource"]["dispute_id"]
+    assert client.post("/api/webhooks/paypal", json=e).status_code == 200
+    body = (SAMPLES / "ups_receipt.pdf").read_bytes()
+    assert client.post(f"/api/disputes/{did}/documents", params={"name": "ups_receipt.pdf"}, content=body).status_code == 200
     assert client.get(f"/api/disputes/{did}").json()["status"] == "OPEN"
-    unmet = [f["label"] for f in client.get(f"/api/disputes/{did}/score").json()["factors"] if not f["met"]]
+    s = client.get(f"/api/disputes/{did}/score").json()
+    assert s["probability"] < 100
+    unmet = [f["label"] for f in s["factors"] if not f["met"]]
     reasons = row(client, did)["review_reasons"]
-    assert reasons == ["Win probability 94% is below the 95% threshold", *unmet]
+    assert reasons == [f"Win probability {s['probability']}% is below the 100% threshold", *unmet]
     assert "autopilot_submitted" not in actions(client, did)
 
 

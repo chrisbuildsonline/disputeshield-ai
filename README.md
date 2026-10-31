@@ -22,7 +22,7 @@ For a merchant who sells goods and ships them with a carrier:
 
 ### The demo
 
-Click "Simulate chargeback". The app creates a simulated "item not received" dispute for USD 49.90. It attaches a sample UPS receipt PDF, the AI reads it, and the score comes out at 94%. Open the dispute and click "Submit evidence". In demo mode nothing leaves your machine and the UI says so. With autopilot on, the same flow submits by itself, with no click.
+Click "Simulate chargeback". The app creates a simulated "item not received" dispute for USD 49.90. It attaches a sample UPS receipt PDF, the AI reads it, and the score comes out at 100%, because the walkthrough case passes every check. Open the dispute and click "Submit evidence". In demo mode nothing leaves your machine and the UI says so. With autopilot on, the same flow submits by itself, with no click.
 
 ## Quick start (no keys)
 
@@ -169,7 +169,7 @@ It runs when a new dispute webhook arrives and when you add a document to a disp
 - Below the threshold, or with no documents, or on an error, it does not submit. It flags the dispute "Needs review" and lists the reasons, including the score factors that were not met.
 - Closed disputes and disputes that were already submitted are skipped.
 
-Each step is written to the audit log. The demo chargeback always runs the agent once, so with autopilot off you see the "Autopilot is off" flag.
+Each step is written to the audit log. The demo chargeback always runs the agent once, so with autopilot off you see the "Waiting for you to review: autopilot is off" flag.
 
 ## Architecture
 
@@ -224,7 +224,7 @@ For "item not received" the base is 9 and the factors are:
 | Order amount matches the dispute | 10 |
 | Order ID on file | 6 |
 
-That adds up to 100. The sample UPS receipt has everything except the order id, so the demo scores 94. Upload the sample CRM order export (`samples/crm_order.pdf`) as well and the order id is found, so it scores 100.
+That adds up to 100. The sample UPS receipt carries every item, order id included, so the walkthrough case passes every check and scores 100. A receipt without an order id would score 94; uploading the sample CRM order export (`samples/crm_order.pdf`) as well supplies it.
 
 There are rulebooks for unauthorised use, item not as described, and a catch-all for other reasons. Some of their factors (address and card checks, prior orders, item matches the listing, refund offered) have no PDF extractor yet, so today they always count as not met.
 

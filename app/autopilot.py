@@ -88,7 +88,7 @@ async def _run(dispute_id: str) -> None:
     )
 
     if not settings["enabled"]:
-        _flag(dispute_id, "Autopilot is off")
+        _flag(dispute_id, "Waiting for you to review: autopilot is off")
     elif not docs:
         _flag(dispute_id, "No evidence documents")
     elif result.probability < settings["threshold"]:

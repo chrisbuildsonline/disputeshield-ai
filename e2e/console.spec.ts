@@ -21,14 +21,14 @@ test("simulate a chargeback, review the evidence and submit it", async ({ page }
   await expect(page.getByText("Demo mode", { exact: true })).toBeVisible();
   await expect(page.getByText("No disputes yet")).toBeVisible();
 
-  // simulate: the new row appears, red, 94%, selected
+  // simulate: the new row appears, red, 100%, selected
   await page.getByRole("button", { name: "Simulate chargeback" }).click();
   const rows = page.locator(".ag-row[row-id]");
   const row = rows.first();
   await expect(row).toBeVisible();
   await expect(row).toHaveClass(/row-contested/);
   await expect(row).toHaveClass(/ag-row-selected/);
-  await expect(row.locator('[col-id="win"]')).toHaveText("94%");
+  await expect(row.locator('[col-id="win"]')).toHaveText("100%");
   await expect(row.locator('[col-id="source"]')).toHaveText("Simulated");
   await expect(row.locator('[col-id="amount"]')).toHaveText("$49.90");
   await expect(row.locator('[col-id="due"]')).toContainText(/\dd \d+h left/);
@@ -45,7 +45,7 @@ test("simulate a chargeback, review the evidence and submit it", async ({ page }
   await expect(detail.getByText("1Z999AA10123456784", { exact: true })).toBeVisible();
   await expect(detail.getByText("Regex fallback")).toBeVisible();
   await expect(detail.getByRole("heading", { name: "Win probability" })).toBeVisible();
-  await expect(detail.getByLabel("Win probability 94 percent")).toBeVisible();
+  await expect(detail.getByLabel("Win probability 100 percent")).toBeVisible();
   await expect(detail.getByText("Delivered to the billing address", { exact: true })).toBeVisible();
   await expect(detail.getByText("Order ID on file", { exact: true })).toBeVisible();
   await expect(detail.getByRole("heading", { name: "Dossier preview" })).toBeVisible();

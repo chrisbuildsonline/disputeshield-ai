@@ -37,8 +37,14 @@ def test_fallback_on_ups_receipt() -> None:
     assert r.delivered_at == "2026-10-01 10:00:00"
     assert r.delivered_to == ADDR
     assert r.signed_by == "J Smith"
-    assert r.order_id is None
+    assert r.order_id == "A-1042"
+    assert r.amount == "49.90"
     assert r.customer_messages == []
+
+
+@pytest.mark.parametrize("label", ["Order ID", "Order Number", "Order No.", "Order #"])
+def test_order_label_variants(label: str) -> None:
+    assert parse_text(f"Carrier: UPS\n{label}: A-1042\nTotal: USD 49.90\n").order_id == "A-1042"
 
 
 def test_fallback_on_crm_order() -> None:
@@ -93,9 +99,9 @@ def _merged() -> Evidence:
 def test_demo_dispute_scores_from_extracted_evidence() -> None:
     d = Dispute(reason=INR, amount=Decimal("49.90"), billing_address=ADDR)
     merged = _merged()
-    # shipping receipt + order amount alone is the 94 demo case ...
+    # without an order id the case scores 94 ...
     assert score(d, dataclasses.replace(merged, order_id=None)).probability == 94
-    # ... and the CRM order id adds the last 6 points
+    # ... and the order id adds the last 6 points
     assert score(d, merged).probability == 100
 
 

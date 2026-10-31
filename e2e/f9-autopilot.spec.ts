@@ -45,7 +45,7 @@ test("autopilot sends a chargeback on its own, and flags the next one when switc
   await sent.locator('[col-id="reason"]').click();
   await expect(detail).toBeVisible();
   await expect(detail.getByText("Autopilot started")).toBeVisible();
-  await expect(detail.getByText(/Autopilot scored the case 94% \(threshold 85%\)/)).toBeVisible();
+  await expect(detail.getByText(/Autopilot scored the case 100% \(threshold 85%\)/)).toBeVisible();
   await expect(detail.getByText("Autopilot submitted the evidence")).toBeVisible();
   await expect(detail.getByText("Evidence submitted (demo mode, not sent to PayPal)")).toBeVisible();
   await page.screenshot({ path: `${SHOTS}/f9-autopilot-on.png` });
@@ -61,7 +61,7 @@ test("autopilot sends a chargeback on its own, and flags the next one when switc
   await expect(sent.getByText("Needs review")).toBeHidden();
   await flagged.locator('[col-id="reason"]').click();
   const flaggedDetail = page.getByRole("dialog", { name: `Dispute ${flaggedId}` });
-  await expect(flaggedDetail.getByText("Autopilot is off").first()).toBeVisible();
+  await expect(flaggedDetail.getByText("Waiting for you to review: autopilot is off").first()).toBeVisible();
   await page.screenshot({ path: `${SHOTS}/f9-flagged.png` });
 
   // a bad threshold is refused and says so

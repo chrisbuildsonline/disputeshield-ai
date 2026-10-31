@@ -12,7 +12,7 @@ from app.main import app
 from app.scoring import INR, SNAD, UNAUTHORISED, Dispute, score
 from app.submit import SAMPLES
 
-EXPECTED = {"leeds": 94, "lisbon": 79, "oslo": 55, "bristol": 44, "madrid": 25}
+EXPECTED = {"leeds": 100, "lisbon": 79, "oslo": 55, "bristol": 44, "madrid": 25}
 
 
 @pytest.fixture(autouse=True)

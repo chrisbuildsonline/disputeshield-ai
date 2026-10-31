@@ -106,7 +106,7 @@ test("sample disputes fill the grid and the KPI strip", async ({ page, request }
   await expect(page.locator(".ag-row.row-contested")).toHaveCount(5);
   // the colour band is the backend's recommendation band: >= 60 fight (green), 30-59 offer (amber), < 30 accept (red)
   const expected: [string, string, string, string, string, string][] = [
-    ["USD", "49.90", "$49.90", "94%", "fight", "green"],
+    ["USD", "49.90", "$49.90", "100%", "fight", "green"],
     ["EUR", "128.00", "€128.00", "79%", "fight", "green"],
     ["NOK", "1299.00", "NOK 1,299.00", "55%", "offer", "amber"],
     ["GBP", "86.40", "£86.40", "44%", "offer", "amber"],
@@ -124,14 +124,14 @@ test("sample disputes fill the grid and the KPI strip", async ({ page, request }
   // the KPI strip says what /api/summary says
   const summary = await (await request.get("/api/summary")).json();
   expect(summary.open_count).toBe(5);
-  expect(summary.avg_win).toBe(59);
+  expect(summary.avg_win).toBe(61);
   expect(summary.next_deadline.dispute_id).toBe(seededBy("NOK", "1299.00").id);
   await expect(kpi(page, "open").locator(".kpi-value")).toHaveText("5");
   await expect(kpi(page, "open").locator(".badge-red")).toHaveText("1 due in 48 h");
   const risk = kpi(page, "risk");
   for (const m of ["€440.50", "£86.40", "NOK 1,299.00", "$49.90"]) await expect(risk).toContainText(m);
-  await expect(kpi(page, "win").locator(".kpi-value")).toHaveText("59%");
-  await expect(page.locator("#kpi-win-bar")).toHaveAttribute("data-band", "offer");
+  await expect(kpi(page, "win").locator(".kpi-value")).toHaveText("61%");
+  await expect(page.locator("#kpi-win-bar")).toHaveAttribute("data-band", "fight"); // 61%: the average moved into the fight band
   const due = kpi(page, "deadline");
   const pill = due.locator(".badge");
   await expect(pill).toHaveText(/^Due in 29 h$/); // 30 h from now, counted down to the whole hour like the row
@@ -177,7 +177,7 @@ test("the KPI strip follows an action at once", async ({ page }) => {
 
   // sooner than the 3 s poll: the action itself refreshes the strip
   await expect(kpi(page, "open").locator(".kpi-value")).toHaveText("4", { timeout: 2500 });
-  await expect(kpi(page, "win").locator(".kpi-value")).toHaveText("68%", { timeout: 2500 });
+  await expect(kpi(page, "win").locator(".kpi-value")).toHaveText("70%", { timeout: 2500 });
   await expect(kpi(page, "risk")).not.toContainText("€440.50");
   await expect(kpi(page, "risk")).toContainText("€128.00");
   expect(errors).toEqual([]);

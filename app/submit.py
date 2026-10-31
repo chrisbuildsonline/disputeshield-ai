@@ -1,7 +1,7 @@
 """Evidence documents, the submit flow, the audit log and sync from PayPal."""
 
 import os
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
 from typing import Any, NoReturn
@@ -11,10 +11,10 @@ from fastapi import APIRouter, BackgroundTasks, HTTPException, Query, Request
 from fastapi.concurrency import run_in_threadpool
 from pydantic import BaseModel, Field, ValidationError
 
-from app import autopilot, llm, paypal, scorecard, store
+from app import autopilot, demo, llm, paypal, scorecard, store
 from app.dossier import _validate_files, build_dossier
 from app.extract import MAX_PDF_BYTES, ExtractedEvidence, extract
-from app.scoring import ACCEPT_BELOW, FIGHT_AT, INR, recommend, score
+from app.scoring import ACCEPT_BELOW, FIGHT_AT, recommend, score
 from app.webhooks import DisputeResource, dispute_row, read_body
 
 SAMPLES = Path(__file__).parent.parent / "samples"
@@ -57,14 +57,14 @@ async def add_document(
     return stored
 
 
-async def _store_document(dispute_id: str, name: str, data: bytes) -> dict[str, Any]:
+async def _store_document(dispute_id: str, name: str, data: bytes, *, use_llm: bool | None = None) -> dict[str, Any]:
     if not data.startswith(b"%PDF-"):
         raise HTTPException(422, "body is not a PDF")
     try:
         _validate_files([(name, data)])  # name rule, extension and size, same as the PayPal upload
     except ValueError as e:
         raise HTTPException(422, str(e)) from None
-    evidence = await run_in_threadpool(extract, data, use_llm=_use_llm())
+    evidence = await run_in_threadpool(extract, data, use_llm=_use_llm() if use_llm is None else use_llm)
     store.add_document(dispute_id, name, data, evidence.model_dump())
     store.add_audit(dispute_id, "document_added", {"name": name, "size": len(data)})
     return {"ok": True, "name": name, "size": len(data), "evidence": evidence.model_dump()}
@@ -137,38 +137,36 @@ async def score_preview(dispute_id: str) -> dict[str, Any]:
     }
 
 
-def _demo_dispute() -> dict[str, Any]:
-    """A simulated 'item not received' chargeback shaped like PayPal's CUSTOMER.DISPUTE.CREATED resource."""
-    now = datetime.now(UTC)
-    stamp = now.strftime("%Y-%m-%dT%H:%M:%S.000Z")
-    return {
-        "dispute_id": f"PP-D-{uuid4().hex[:10].upper()}",
-        "reason": INR,
-        "status": "OPEN",
-        "dispute_amount": {"currency_code": "USD", "value": "49.90"},
-        "create_time": stamp,
-        "update_time": stamp,
-        "seller_response_due_date": (now + timedelta(days=7)).strftime("%Y-%m-%dT%H:%M:%S.000Z"),
-        "dispute_channel": "INTERNAL",
-        "messages": [{"posted_by": "BUYER", "time_posted": stamp, "content": "item not received"}],
-        scorecard.BILLING_KEY: "12 High Street, Leeds LS1 4AB",  # the address on the sample UPS receipt
-    }
-
-
-@router.post("/api/demo/chargeback")
-async def demo_chargeback(background: BackgroundTasks) -> dict[str, Any]:
-    if os.environ.get("DISPUTESHIELD_DEMO_MODE") != "1":
-        raise HTTPException(404, "not found")
-    resource = _demo_dispute()
+async def _create_demo(s: demo.Scenario, background: BackgroundTasks, *, use_llm: bool) -> dict[str, Any]:
+    resource = demo.resource(s)
     res = DisputeResource.model_validate(resource)
     store.record_event(
         f"DEMO-{uuid4().hex}", "CUSTOMER.DISPUTE.CREATED", dispute_row(res, resource, "simulated")
     )
     store.add_audit(res.dispute_id, "simulated_chargeback", {"reason": res.reason})
-    receipt = SAMPLES / "ups_receipt.pdf"
-    await _store_document(res.dispute_id, receipt.name, receipt.read_bytes())
+    for name in s.docs:
+        await _store_document(res.dispute_id, name, (SAMPLES / name).read_bytes(), use_llm=use_llm)
     background.add_task(autopilot.run, res.dispute_id)  # always, so an "off" autopilot shows its flag in the demo
     return _require_dispute(res.dispute_id)
+
+
+def _require_demo_mode() -> None:
+    if os.environ.get("DISPUTESHIELD_DEMO_MODE") != "1":
+        raise HTTPException(404, "not found")
+
+
+@router.post("/api/demo/chargeback")
+async def demo_chargeback(background: BackgroundTasks) -> dict[str, Any]:
+    _require_demo_mode()
+    return await _create_demo(demo.SCENARIOS[0], background, use_llm=_use_llm())
+
+
+@router.post("/api/demo/seed")
+async def demo_seed(background: BackgroundTasks) -> dict[str, Any]:
+    """Five varied simulated chargebacks. Receipts are read with the regex parser: the sample PDFs are fixed, so no model call."""
+    _require_demo_mode()
+    disputes = [await _create_demo(s, background, use_llm=False) for s in demo.SCENARIOS]
+    return {"count": len(disputes), "disputes": disputes}
 
 
 @router.post("/api/disputes/{dispute_id}/submit")

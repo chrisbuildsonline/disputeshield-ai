@@ -1,5 +1,7 @@
 import json
 import os
+from datetime import UTC, datetime
+from decimal import Decimal, InvalidOperation
 from typing import Any
 
 import httpx
@@ -166,6 +168,45 @@ def list_disputes() -> list[dict[str, Any]]:
             else None
         )
     return rows
+
+
+CLOSED_STATUSES = {"RESOLVED", "WAITING_FOR_BUYER_RESPONSE", "UNDER_REVIEW"}  # accepted, offer out, evidence sent
+
+
+def _due(value: str | None) -> datetime | None:
+    try:
+        parsed = datetime.fromisoformat(value or "")
+    except ValueError:
+        return None
+    return parsed if parsed.tzinfo else parsed.replace(tzinfo=UTC)
+
+
+@router.get("/api/summary")
+def summary() -> dict[str, Any]:
+    """Totals over the open disputes (not accepted, offered on, resolved or answered with evidence)."""
+    rows = [r for r in list_disputes() if r["status"] not in CLOSED_STATUSES and not r["outcome"]]
+    at_risk: dict[str, Decimal] = {}
+    for r in rows:
+        try:
+            at_risk[r["currency"]] = at_risk.get(r["currency"], Decimal(0)) + Decimal(r["amount_value"])
+        except (InvalidOperation, TypeError):
+            pass
+    wins = [r["win_probability"] for r in rows if r["win_probability"] is not None]
+    dated = [(due, r) for r in rows if (due := _due(r["seller_response_due_date"]))]
+    next_deadline = None
+    if dated:
+        due, r = min(dated, key=lambda x: x[0])
+        next_deadline = {
+            "dispute_id": r["id"],
+            "due": r["seller_response_due_date"],
+            "hours_left": round((due - datetime.now(UTC)).total_seconds() / 3600, 1),
+        }
+    return {
+        "open_count": len(rows),
+        "at_risk": [{"currency": c, "value": f"{at_risk[c]:.2f}"} for c in sorted(at_risk)],
+        "avg_win": round(sum(wins) / len(wins)) if wins else None,
+        "next_deadline": next_deadline,
+    }
 
 
 @router.get("/api/disputes/{dispute_id}")

@@ -40,7 +40,8 @@ export interface Evidence {
   order_id: string | null;
   amount: string | null;
   customer_messages: string[];
-  source: "ollama" | "claude" | "fallback";
+  /** "recorded": no model was reachable, so this is a real model run's earlier read of these exact PDF bytes. */
+  source: "ollama" | "claude" | "recorded" | "fallback";
   model?: string | null;
 }
 
@@ -65,7 +66,7 @@ export interface Score {
   base: number;
   factors: Factor[];
   documents: ScoreDoc[];
-  dossier: { note: string; note_source: "ollama" | "claude" | "template"; note_model?: string | null; files: string[] };
+  dossier: { note: string; note_source: "ollama" | "claude" | "recorded" | "template"; note_model?: string | null; files: string[] };
 }
 
 export interface AuditRow {

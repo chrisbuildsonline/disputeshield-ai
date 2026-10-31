@@ -92,10 +92,29 @@ function auditText(a: AuditRow): string {
   }
 }
 
+const START_OLLAMA = "Start Ollama for live reads.";
+
+/** "recorded": no model was reachable, so this is what a real model run wrote earlier for these exact inputs. */
 function sourceBadge(source: string, model?: string | null): string {
-  const ai = source === "ollama" || source === "claude";
-  const text = ai ? `AI &middot; ${esc(model || (source === "claude" ? "Claude" : "Ollama"))}` : source === "template" ? "Template" : "Regex fallback";
-  return `<span class="badge ${ai ? "badge-ai" : "badge-muted"}">${text}</span>`;
+  const recorded = source === "recorded";
+  const ai = recorded || source === "ollama" || source === "claude";
+  if (!ai) return `<span class="badge badge-muted">${source === "template" ? "Template" : "Regex fallback"}</span>`;
+  const name = esc(model || (source === "claude" ? "Claude" : recorded ? "the model" : "Ollama"));
+  if (!recorded) return `<span class="badge badge-ai">AI &middot; ${name}</span>`;
+  return `<span class="badge badge-ai badge-recorded" title="Recorded from a real ${name} run. ${START_OLLAMA}">AI &middot; ${name} &middot; recorded</span>`;
+}
+
+/** One quiet line per panel when anything in it was recorded rather than read live. */
+function recordedLine(score: Score): string {
+  const docs = score.documents.filter((d) => d.evidence.source === "recorded");
+  const note = score.dossier.note_source === "recorded";
+  if (!docs.length && !note) return "";
+  // the read and the note can come from different models: name each one that was used
+  const models = [...new Set([...docs.map((d) => d.evidence.model), note ? score.dossier.note_model : null].filter((m): m is string => !!m))];
+  const runs = models.length > 1 ? `real ${models.map(esc).join(" and ")} runs` : `a real ${esc(models[0] ?? "model")} run`;
+  const pdfs = docs.length === 1 ? "this exact PDF" : docs.length ? "these exact PDFs" : "";
+  const what = note ? (pdfs ? `${pdfs} and these case facts` : "these exact case facts") : pdfs;
+  return `<p class="recorded-line">Recorded from ${runs} on ${what}. ${START_OLLAMA}</p>`;
 }
 
 function renderEvidence(score: Score): string {
@@ -106,7 +125,7 @@ function renderEvidence(score: Score): string {
       const rows = FIELDS.filter(([k]) => e[k]).map(([k, label]) => `<dt>${label}</dt><dd>${esc(e[k])}</dd>`);
       for (const m of e.customer_messages) rows.push(`<dt>Customer message</dt><dd>${esc(m)}</dd>`);
       return `<div class="card"><div class="card-head"><strong>${esc(doc.name)}</strong>
-        <span class="muted">Read by</span> ${sourceBadge(e.source, e.model)}</div>
+        <span class="by"><span class="muted">Read by</span> ${sourceBadge(e.source, e.model)}</span></div>
         <dl class="facts">${rows.join("") || `<dt>Nothing found</dt><dd>No facts could be read from this file.</dd>`}</dl></div>`;
     })
     .join("");
@@ -135,13 +154,14 @@ function renderScore(score: Score): string {
       <span class="points">${score.base}</span></li>${factors}</ul>`;
 }
 
-function renderDossier(score: Score): string {
+/** The recorded line sits under the evidence cards, or under the note when only the note was recorded. */
+function renderDossier(score: Score, line: string): string {
   const d = score.dossier;
   const files = d.files.length
     ? `<ul class="files">${d.files.map((f) => `<li>${esc(f)}</li>`).join("")}</ul>`
     : `<p class="muted">No files will be attached.</p>`;
-  return `<div class="card"><div class="card-head"><strong>Rebuttal note</strong><span class="muted">Written by</span> ${sourceBadge(d.note_source, d.note_model)}</div>
-    <p class="note">${esc(d.note)}</p></div>
+  return `<div class="card"><div class="card-head"><strong>Rebuttal note</strong><span class="by"><span class="muted">Written by</span> ${sourceBadge(d.note_source, d.note_model)}</span></div>
+    <p class="note">${esc(d.note)}</p></div>${line}
     <h4>Attached documents</h4>${files}`;
 }
 
@@ -360,10 +380,12 @@ export function createDetail(opts: { onClose: (id: string) => void; onSubmitted:
       body.innerHTML = `<p class="muted loading" role="status">Reading the evidence and scoring the case...</p>`;
       return;
     }
+    const line = recordedLine(score);
+    const docLine = score.documents.some((d) => d.evidence.source === "recorded");
     body.innerHTML = `
       <section aria-labelledby="h-score"><h3 id="h-score">Win probability</h3>${renderScore(score)}</section>
-      <section aria-labelledby="h-evidence"><h3 id="h-evidence">Extracted evidence</h3>${renderEvidence(score)}</section>
-      <section aria-labelledby="h-dossier"><h3 id="h-dossier">Dossier preview</h3>${renderDossier(score)}</section>
+      <section aria-labelledby="h-evidence"><h3 id="h-evidence">Extracted evidence</h3>${renderEvidence(score)}${docLine ? line : ""}</section>
+      <section aria-labelledby="h-dossier"><h3 id="h-dossier">Dossier preview</h3>${renderDossier(score, docLine ? "" : line)}</section>
       <section aria-labelledby="h-audit"><h3 id="h-audit">Audit trail</h3><div id="audit-list">${renderAudit(audit)}</div></section>`;
   }
 

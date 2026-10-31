@@ -357,6 +357,14 @@ kbd {
   color: #3730a3;
 }
 
+/* the same AI family, quieter: an indigo hairline on white instead of the filled tint (replayed, not live) */
+.badge-recorded {
+  background: #fff;
+  color: #4338ca;
+  box-shadow: inset 0 0 0 1px #c7d2fe;
+  cursor: help;
+}
+
 /* page: title, KPI strip, grid */
 .stage {
   flex: 1;
@@ -1118,8 +1126,9 @@ kbd {
 
 .card-head {
   display: flex;
+  flex-wrap: wrap; /* on a phone "Read by" and its badge drop under the file name together */
   align-items: center;
-  gap: 6px;
+  gap: 6px 10px;
   margin-bottom: 8px;
   font-size: 14px;
 }
@@ -1127,6 +1136,34 @@ kbd {
 .card-head strong {
   margin-right: auto;
   word-break: break-all;
+}
+
+.card-head .by {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+}
+
+/* one quiet footnote per panel when a read or the note was recorded rather than live */
+.recorded-line {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin: 2px 2px 0;
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--muted);
+}
+
+.recorded-line::before {
+  content: "";
+  flex: none;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  box-shadow: inset 0 0 0 1.5px #a5b4fc;
+  transform: translateY(-1px);
 }
 
 .facts {

@@ -92,7 +92,12 @@ stay until dismissed. A Dismiss button closes it.
 - **Mobile 375px**: one job per screen: the grid, or the full-screen panel. Header wraps; the
   panel foot stays at the bottom so the primary action is in thumb reach. Large type kept.
 
+- **Autopilot** (header): one floating white pill holding a switch (the real `role=switch` checkbox
+  drawn as a 40x24 track, grey off, indigo on) and the threshold as a 999px pill input without spin
+  arrows. A bad threshold gets `aria-invalid`, a red tint and a small red hint pill under it; it is
+  not sent until it is a whole number 0-100.
+- **Banners** (result, Needs review, token gate): tinted cards, 14px radius, no border.
+- **Busy buttons**: Simulate chargeback reads "Reading the receipt…" with a small spinning ring.
+
 ## Where the current CSS differs (left for later features)
-- The token gate still uses the bordered info banner style.
-- The Status column is too narrow for "Open" + "Needs review" side by side (clips).
-- The header's Autopilot checkbox and threshold input are still browser defaults.
+- The token gate is still a plain tinted banner, not a designed card.

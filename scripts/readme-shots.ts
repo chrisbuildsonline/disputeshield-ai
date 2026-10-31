@@ -15,7 +15,7 @@ const MODEL = process.env.DISPUTESHIELD_OLLAMA_MODEL || 'qwen3:8b';
 const OLLAMA = process.env.OLLAMA_HOST || 'http://localhost:11434';
 const MAX_BYTES = 700_000;
 const WAIT = { timeout: 180_000 };
-const FALLBACK = /Regex fallback|Template/;
+const FALLBACK = /Regex fallback|Template|recorded/i; // a recorded read is honest, but these shots are meant to show a live one
 
 function run(cmd: string[]): void {
   const p = Bun.spawnSync(cmd, { cwd: ROOT, env: { ...process.env, CI: '1' } });
@@ -85,7 +85,7 @@ async function expectAi(panel: Locator, id: string): Promise<void> {
     console.error(JSON.stringify(s, null, 2));
     throw new Error(`the panel shows ${JSON.stringify(badges)}, wanted every badge to be "AI · ${MODEL}"`);
   }
-  if (FALLBACK.test(await panel.innerText())) throw new Error('the panel mentions a fallback');
+  if (FALLBACK.test(await panel.innerText())) throw new Error('the panel mentions a fallback or a recorded read: is Ollama answering?');
 }
 
 async function dismissToast(page: Page): Promise<void> {

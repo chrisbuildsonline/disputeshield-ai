@@ -88,6 +88,78 @@ def test_demo_video_is_type_checked() -> None:
     assert "scripts" in tsconfig["include"]
 
 
+IMAGE = re.compile(r"!\[[^\]]*\]\(\s*<?([^)\s>]+)>?(?:\s+\"[^\"]*\")?\s*\)|<img\b[^>]*\bsrc=[\"']([^\"']+)[\"']", re.I)
+WEB_HTML = (ROOT / "web" / "index.html").read_text(encoding="utf-8")
+WEB_TS = "\n".join(p.read_text(encoding="utf-8") for p in (ROOT / "web" / "src").glob("*.ts"))
+
+
+def _images() -> list[tuple[int, str]]:
+    """(offset, path) for every Markdown and HTML image in the README."""
+    return [(m.start(), m.group(1) or m.group(2)) for m in IMAGE.finditer(README)]
+
+
+def _section(heading: str) -> str:
+    m = re.search(rf"(?ms)^## {re.escape(heading)}\s*$(.*?)(?=^## |\Z)", README)
+    assert m, f"no '## {heading}' section"
+    return m.group(1)
+
+
+def test_readme_images_are_committed_files() -> None:
+    images = _images()
+    assert len(images) >= 3, f"README has {len(images)} images, wanted at least 3"
+    for _, src in images:
+        assert not re.match(r"(?i)^(?:[a-z]+:)?//", src), f"{src} is on an external host"
+        path = (ROOT / src).resolve()
+        assert path.is_relative_to(ROOT), f"{src} points outside the repo"
+        assert path.is_file(), f"{src} does not exist"
+        assert path.stat().st_size < 700_000, f"{src} is {path.stat().st_size} bytes, keep it under 700 KB"
+
+
+def test_readme_hero_image_comes_before_the_first_section() -> None:
+    images = _images()
+    first_heading = re.search(r"(?m)^## ", README)
+    assert images and first_heading
+    assert images[0][0] < first_heading.start(), "the first image is not above the first ## heading"
+
+
+def test_readme_screenshots_are_not_gitignored() -> None:
+    ignored = (ROOT / ".gitignore").read_text(encoding="utf-8").splitlines()
+    for _, src in _images():
+        top = src.split("/")[0]
+        assert f"{top}/" not in ignored and top not in ignored, f"{src} is gitignored"
+
+
+def test_why_it_matters_cites_sources() -> None:
+    links = re.findall(r"\]\((https?://[^)\s]+)\)|<(https?://[^>\s]+)>", _section("Why it matters"))
+    assert len(links) >= 2, f"'Why it matters' links {len(links)} sources, wanted at least 2"
+
+
+def test_code_link_and_built_for_render_as_separate_lines() -> None:
+    lines = README.splitlines()
+    code = next(i for i, line in enumerate(lines) if "github.com/chrisbuildsonline/disputeshield-ai" in line)
+    built = next(i for i, line in enumerate(lines) if "Built for" in line)
+    a, b = sorted((code, built))
+    between = lines[a + 1 : b]
+    as_list = all(re.match(r"\s*(?:[-*+]|\d+\.)\s", lines[i]) for i in (a, b))
+    assert any(not line.strip() for line in between) or as_list or lines[a].endswith(("  ", "\\", "<br>")), (
+        "the Code link and 'Built for' join into one paragraph"
+    )
+
+
+@pytest.mark.parametrize("label", ["Load sample disputes", "Sync from PayPal", "Simulate chargeback", "Accept claim", "Offer refund"])
+def test_readme_names_the_real_console_controls(label: str) -> None:
+    assert label in WEB_HTML or label in WEB_TS, f"the console has no '{label}' control"
+    assert label in README, f"README does not name '{label}'"
+
+
+def test_readme_shots_script_is_wired_and_documented() -> None:
+    scripts = json.loads((ROOT / "package.json").read_text(encoding="utf-8"))["scripts"]
+    assert "scripts/readme-shots.ts" in scripts.get("readme:shots", "")
+    assert (ROOT / "scripts" / "readme-shots.ts").is_file()
+    assert "bun run readme:shots" in README
+    assert any(src.startswith("docs/screenshots/") for _, src in _images())
+
+
 def test_env_files_are_ignored_correctly() -> None:
     lines = (ROOT / ".gitignore").read_text(encoding="utf-8").splitlines()
     assert ".env" in lines

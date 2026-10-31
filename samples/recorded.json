@@ -1,0 +1,128 @@
+{
+  "notes": {
+    "7b6a7bafed3a989966e6374ed4b3fac99270fd8cae742118eab947dc05beaba5": {
+      "model": "qwen3:8b",
+      "note": "We received order B-2217 for USD 1299.00. The item was shipped via PostNord with tracking number 00370729900123456785. It was delivered on 2026-10-12 11:05:00 to Storgata 14, 0155 Oslo, signed by O Berg. The order amount matches the dispute. We have buyer correspondence on file. We request PayPal to rule in our favour.",
+      "recorded_at": "2026-10-31T18:04:54Z",
+      "scenario": "oslo"
+    },
+    "a96585b307daad246de2282fb9e001ac350e2431e1ca3ad6b527af42642f8d07": {
+      "model": "qwen3:8b",
+      "note": "We received the order with ID A-1042 for USD 49.90. The item was shipped via UPS with tracking number 1Z999AA10123456784. It was delivered on 2026-10-01 10:00:00 to 12 High Street, Leeds LS1 4AB. The package was signed for by J Smith. The delivery matches the order amount and billing address. We met all the required factors. Please rule in our favor.",
+      "recorded_at": "2026-10-31T18:04:54Z",
+      "scenario": "leeds"
+    }
+  },
+  "pdfs": {
+    "0ec5df82a325b3f38d884c6b1a7b400a1495153eda6b0a1cf36203ad64cfdcf5": {
+      "fields": {
+        "amount": "",
+        "carrier": "DHL",
+        "customer_messages": [],
+        "delivered_at": "2026-10-09 14:20:00",
+        "delivered_to": "Rua Augusta 88, 1100-048 Lisboa",
+        "order_id": null,
+        "signed_by": null,
+        "tracking_number": "JD014600006281234567"
+      },
+      "file": "dhl_lisbon_receipt.pdf",
+      "model": "qwen3:8b",
+      "recorded_at": "2026-10-31T18:04:54Z"
+    },
+    "139345eb947197b39b33f863f0651ddfef3c5e258471ed225002a361d34d625a": {
+      "fields": {
+        "amount": null,
+        "carrier": "DPD",
+        "customer_messages": [],
+        "delivered_at": "2026-10-14 16:40:00",
+        "delivered_to": "Unit 9 Harbour Quay, Bristol BS1 4RB",
+        "order_id": null,
+        "signed_by": null,
+        "tracking_number": "15501234567890"
+      },
+      "file": "dpd_bristol_receipt.pdf",
+      "model": "qwen3:8b",
+      "recorded_at": "2026-10-31T18:04:54Z"
+    },
+    "22c0765834c992e0bf404fe793c9bfd7ddeecb762aa0c5831384300a6b13ecfe": {
+      "fields": {
+        "amount": "https://www.ups.com/track?tracknum=1Z999AA10123456784",
+        "carrier": "UPS",
+        "customer_messages": [],
+        "delivered_at": "2026-10-01 10:00:00",
+        "delivered_to": "12 High Street, Leeds LS1 4AB",
+        "order_id": "A-1042",
+        "signed_by": "J Smith",
+        "tracking_number": "1Z999AA10123456784"
+      },
+      "file": "ups_receipt.pdf",
+      "model": "qwen3:8b",
+      "recorded_at": "2026-10-31T18:04:54Z"
+    },
+    "5bbf0de419c1854238e5161f0f6730e6b2a4a975c3ca938a68b2a2c78f2c55ab": {
+      "fields": {
+        "amount": null,
+        "carrier": null,
+        "customer_messages": [
+          "Hello, the jacket looks different from the photos."
+        ],
+        "delivered_at": null,
+        "delivered_to": null,
+        "order_id": "B-2217",
+        "signed_by": null,
+        "tracking_number": null
+      },
+      "file": "crm_oslo_order.pdf",
+      "model": "qwen3:8b",
+      "recorded_at": "2026-10-31T18:04:54Z"
+    },
+    "5be919b696b8a6ff9ad251b749816522ec68e0116cdfabf5788f36682fa0821a": {
+      "fields": {
+        "amount": "N/A",
+        "carrier": null,
+        "customer_messages": [
+          "Hi, where is my parcel? It has not arrived.",
+          "Please confirm the delivery address is correct."
+        ],
+        "delivered_at": null,
+        "delivered_to": null,
+        "order_id": "A-1042",
+        "signed_by": null,
+        "tracking_number": null
+      },
+      "file": "crm_order.pdf",
+      "model": "qwen3:8b",
+      "recorded_at": "2026-10-31T18:04:54Z"
+    },
+    "db3eb943d57d7d8f8e4dc0b2d25bfba38bb878e0bfb5522562e1e0b782192a09": {
+      "fields": {
+        "amount": null,
+        "carrier": "SEUR",
+        "customer_messages": [],
+        "delivered_at": "2026-10-16 09:15:00",
+        "delivered_to": "Avenida del Puerto 3, 46021 Valencia",
+        "order_id": null,
+        "signed_by": "R Alvarez",
+        "tracking_number": "05012345678901"
+      },
+      "file": "seur_madrid_receipt.pdf",
+      "model": "qwen3:8b",
+      "recorded_at": "2026-10-31T18:04:54Z"
+    },
+    "eb7383b1a6aab8fcd1368a5bcbe826e35f8765a55fc53df28b550f362f2a752e": {
+      "fields": {
+        "amount": null,
+        "carrier": "PostNord",
+        "customer_messages": [],
+        "delivered_at": "2026-10-12 11:05:00",
+        "delivered_to": "Storgata 14, 0155 Oslo",
+        "order_id": null,
+        "signed_by": "O Berg",
+        "tracking_number": "00370729900123456785"
+      },
+      "file": "postnord_oslo_receipt.pdf",
+      "model": "qwen3:8b",
+      "recorded_at": "2026-10-31T18:04:54Z"
+    }
+  }
+}

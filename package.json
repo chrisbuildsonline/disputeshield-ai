@@ -23,6 +23,7 @@
     "demo:video": "bun scripts/demo-video.ts",
     "readme:shots": "bun scripts/readme-shots.ts",
     "demo:frames": "ffprobe -v error -show_entries format=duration:stream=codec_name,width,height -of compact out/disputeshield-demo.mp4 && ffmpeg -v error -y -i out/disputeshield-demo.mp4 -vf fps=1/10,scale=960:-2 out/frame-%02d.png",
+    "llm:record": "bun run llm:start && PYTHONPATH=. uv run python scripts/record_llm.py",
     "llm:try": "bash scripts/try-models.sh",
     "llm:host": "PYTHONPATH=. uv run python scripts/try_models.py"
   },

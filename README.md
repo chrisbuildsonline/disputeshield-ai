@@ -2,12 +2,18 @@
 
 Chargeback defense for PayPal merchants. It takes in PayPal dispute webhooks, reads your shipping and order PDFs, scores your chances of winning, and sends the evidence to PayPal.
 
-Code: https://github.com/chrisbuildsonline/disputeshield-ai
-Built for the [PayPal AI Hackathon](https://paypalaihackathon.devpost.com/).
+![The console: six disputes, the KPI strip, and the walkthrough case open at 100% with the UPS receipt read by qwen3:8b](docs/screenshots/hero.png)
 
-## The problem
+- Code: https://github.com/chrisbuildsonline/disputeshield-ai
+- Built for the [PayPal AI Hackathon](https://paypalaihackathon.devpost.com/).
+
+## Why it matters
 
 A small merchant gets a PayPal dispute ("item not received"). The proof is in a carrier receipt and an order export. Finding it, typing it up and answering inside the deadline takes time, and many merchants never answer. An unanswered dispute is a lost dispute.
+
+- PayPal gives the seller 10 days. Its seller help page says: "If you don't respond within these 10 days and the buyer escalates it to a claim, we will resolve the case in the buyer's favor." ([PayPal Help Center](https://www.paypal.com/us/cshelp/article/i-am-a-seller---how-do-i-handle-a-dispute-or-problem-with-a-buyer-help1083))
+- Disputes are growing. Datos Insights expects 261 million chargebacks worldwide in 2025 and 324 million in 2028. ([Mastercard, 2025 State of Chargebacks report](https://www.mastercard.com/content/dam/mccom/shared/news-and-trends/insights/2025/2025-global-chargebacks-outlook/pdf/2025-state-of-chargebacks-report.pdf))
+- Each loss costs more than the sale. In the 2026 LexisNexis True Cost of Fraud study, every $1 of direct fraud loss costs US retail and ecommerce merchants about $5.13 in total. ([LexisNexis Risk Solutions](https://risk.lexisnexis.com/about-us/press-room/press-release/20260624-tcof-retail-and-commerce))
 
 ## What it does
 
@@ -22,7 +28,26 @@ For a merchant who sells goods and ships them with a carrier:
 
 ### The demo
 
-Click "Simulate chargeback". The app creates a simulated "item not received" dispute for USD 49.90. It attaches a sample UPS receipt PDF, the AI reads it, and the score comes out at 100%, because the walkthrough case passes every check. Open the dispute and click "Submit evidence". In demo mode nothing leaves your machine and the UI says so. With autopilot on, the same flow submits by itself, with no click.
+The first three controls are in the page header, the last one is on the empty table:
+
+- **Simulate chargeback** (demo mode only) creates an "item not received" dispute for USD 49.90 and attaches the sample UPS receipt (`samples/ups_receipt.pdf`). The model reads it, and the case scores 100%: the receipt has the tracking number, the delivery, the billing address, a signature, the amount and the order id A-1042, so every factor is met.
+- **Sync from PayPal** pulls your sandbox disputes. It needs keys (see below).
+- **Autopilot** is a switch, with a **Threshold** field next to it (default 85). See [Autopilot](#autopilot).
+- **Load sample disputes** adds five made-up cases in four currencies, scored from 25% to 100%. Their receipts are read by the regex parser, not the model, so they load at once and their evidence cards say "Regex fallback".
+
+Click a row to open it. With autopilot off, the panel says "Needs review: Waiting for you to review: autopilot is off". Click "Submit evidence". In demo mode nothing leaves your machine, and the panel says "Demo mode: nothing was sent to PayPal". The audit trail lists each step. In the screenshot below, the model wrote the rebuttal note and it passed the fact check, so its badge says "AI · qwen3:8b". A note that fails the check is replaced by the fixed template, and the badge says "Template".
+
+![Evidence submitted in demo mode: the model's rebuttal note, the audit trail and the "nothing was sent to PayPal" banner](docs/screenshots/submitted.png)
+
+Under 60% the panel recommends a refund offer (30% to 59%) or accepting the claim (under 30%), and the **Offer refund** and **Accept claim** buttons take over. "Submit evidence" stays below them, if you want to fight anyway. Below, a "not as described" case with the sample PostNord receipt and CRM export uploaded scores 55%.
+
+![A weak case at 55%: the panel recommends Offer refund and shows the Offer refund and Accept claim buttons](docs/screenshots/recommendation.png)
+
+The console works on a phone too:
+
+<img src="docs/screenshots/phone.png" width="300" alt="The console at 375 pixels wide: the header controls stacked, the KPIs in a 2 by 2 block">
+
+These screenshots come from `bun run readme:shots`, which drives the real console with qwen3:8b on.
 
 ## Quick start (no keys)
 
@@ -169,7 +194,9 @@ It runs when a new dispute webhook arrives and when you add a document to a disp
 - Below the threshold, or with no documents, or on an error, it does not submit. It flags the dispute "Needs review" and lists the reasons, including the score factors that were not met.
 - Closed disputes and disputes that were already submitted are skipped.
 
-Each step is written to the audit log. The demo chargeback always runs the agent once, so with autopilot off you see the "Waiting for you to review: autopilot is off" flag.
+Each step is written to the audit log. The demo chargeback always runs the agent once, so with autopilot off you see the "Waiting for you to review: autopilot is off" flag. With it on, the next "Simulate chargeback" is read, scored 100% and submitted with no click, and the console says so in a toast.
+
+![Autopilot on: the new chargeback was submitted by itself and the toast reports a 100% win probability](docs/screenshots/autopilot.png)
 
 ## Architecture
 
@@ -237,6 +264,7 @@ There are rulebooks for unauthorised use, item not as described, and a catch-all
 | `bun run e2e` | Playwright against a server it starts on port 8765, with the model and PayPal off. |
 | `bun run e2e:alt` | The same on port 8766, if 8765 is taken. |
 | `bun run demo:video` | Runs `bun run test` and `bun run typecheck` first and stops if either is red. Then starts its own server (demo mode, throwaway database, the local model on) and records a narrated tour of the console. Writes `out/disputeshield-demo.mp4` (1920x1080, about 2.5 minutes). Needs Ollama with `qwen3:8b`, `ffmpeg` and `uvx` (for the edge-tts voice). |
+| `bun run readme:shots` | Starts its own server (demo mode, throwaway database, the local model on), drives the console with Playwright and saves the README screenshots to `docs/screenshots/`. It stops if any panel shows "Regex fallback" or "Template" instead of the model, or the console logs an error. Needs Ollama with `qwen3:8b`. |
 | `bun run demo:frames` | Prints the video's streams and saves a frame every 10 seconds to `out/frame-NN.png`, to look it over. |
 | `bun run docker:test` | Builds the image and runs pytest inside it. |
 | `bun run docker:e2e` | Runs the Playwright suite against the container. |

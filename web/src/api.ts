@@ -11,6 +11,13 @@ export interface Dispute {
   review_reasons: string[] | null;
 }
 
+export interface Summary {
+  open_count: number;
+  at_risk: { currency: string; value: string }[];
+  avg_win: number | null;
+  next_deadline: { dispute_id: string; due: string; hours_left: number } | null;
+}
+
 export interface Autopilot {
   enabled: boolean;
   threshold: number;
@@ -174,6 +181,19 @@ export function reasonLabel(reason: string | null): string {
       .replace(/_/g, " ")
       .replace(/^./, (c) => c.toUpperCase())
   );
+}
+
+/** The recommendation bands, the same numbers as FIGHT_AT / ACCEPT_BELOW in app/scoring.py. */
+export const FIGHT_AT = 60;
+export const ACCEPT_BELOW = 30;
+
+export type Band = "fight" | "offer" | "accept";
+
+/** Every coloured win probability uses this: green fight, amber offer a refund, red accept. */
+export function winBand(probability: number): { band: Band; tone: "green" | "amber" | "red" } {
+  if (probability >= FIGHT_AT) return { band: "fight", tone: "green" };
+  if (probability >= ACCEPT_BELOW) return { band: "offer", tone: "amber" };
+  return { band: "accept", tone: "red" };
 }
 
 /** Still waiting on the seller: these are the rows that need attention. */

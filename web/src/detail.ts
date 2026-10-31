@@ -13,6 +13,7 @@ import {
   type RecAction,
   type Score,
   type SubmitResult,
+  winBand,
 } from "./api";
 
 const DEMO_LABEL = "Demo mode: nothing was sent to PayPal";
@@ -112,7 +113,8 @@ function renderEvidence(score: Score): string {
 }
 
 function renderScore(score: Score): string {
-  const tone = score.probability >= 80 ? "good" : score.probability >= 50 ? "warn" : "bad";
+  const { band } = winBand(score.probability);
+  const tone = { fight: "good", offer: "warn", accept: "bad" }[band];
   const factors = score.factors
     .map(
       (f) => `<li class="factor ${f.met ? "met" : "unmet"}">
@@ -124,7 +126,7 @@ function renderScore(score: Score): string {
   const [recLabel, recTone] = REC[score.recommendation.action];
   return `<div class="score">
       <div class="score-num ${tone}" aria-label="Win probability ${score.probability} percent">${score.probability}%</div>
-      <div class="score-bar" aria-hidden="true"><span class="${tone}" style="width:${score.probability}%"></span></div>
+      <div class="score-bar" aria-hidden="true"><span class="${tone}" data-band="${band}" style="width:${score.probability}%"></span></div>
     </div>
     <div class="rec"><span class="rec-label">Recommended</span><span class="badge rec-pill ${recTone}">${recLabel}</span>
       <p class="rec-reason muted">${esc(score.recommendation.reason)}</p></div>

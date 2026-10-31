@@ -40,13 +40,64 @@
     </section>
 
     <main class="stage">
-      <h2 class="sr-only">Disputes</h2>
+      <div class="page-head">
+        <h2 class="page-title">Disputes</h2>
+        <p id="page-sub" class="muted">Open cases first. Every one is scored and has its evidence ready.</p>
+      </div>
+
+      <section id="kpis" class="kpis" aria-label="Summary">
+        <article class="kpi" data-kpi="open">
+          <div class="kpi-top">
+            <p class="kpi-label">Open disputes</p>
+            <span id="kpi-soon"></span>
+          </div>
+          <p class="kpi-value" id="kpi-open">0</p>
+          <p class="kpi-foot" id="kpi-open-foot">waiting on your reply</p>
+        </article>
+        <article class="kpi" data-kpi="risk">
+          <p class="kpi-label">Money at risk</p>
+          <ul class="kpi-money" id="kpi-risk" hidden></ul>
+          <p class="kpi-value" id="kpi-risk-none">&mdash;</p>
+          <p class="kpi-foot" id="kpi-risk-foot">nothing at stake</p>
+        </article>
+        <article class="kpi" data-kpi="win">
+          <p class="kpi-label">Average win chance</p>
+          <p class="kpi-value" id="kpi-win">&mdash;</p>
+          <div class="kpi-bar" aria-hidden="true"><span id="kpi-win-bar"></span></div>
+        </article>
+        <article class="kpi kpi-deadline" data-kpi="deadline">
+          <div class="kpi-top">
+            <p class="kpi-label">Next deadline</p>
+            <span id="kpi-due-pill"></span>
+          </div>
+          <div id="kpi-deadline"><p class="kpi-value">&mdash;</p></div>
+        </article>
+      </section>
+
       <div class="grid-wrap">
         <div id="grid" role="region" aria-label="Disputes table"></div>
+        <div id="grid-loading" class="grid-loading" role="status" aria-live="polite">
+          <div class="skeleton" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></div>
+          <p>Loading disputes&hellip;</p>
+        </div>
         <div id="empty" class="empty" hidden>
+          <svg class="empty-art" viewBox="0 0 160 120" aria-hidden="true">
+            <rect x="22" y="30" width="78" height="68" rx="12" fill="#e0e7ff" transform="rotate(-8 61 64)" />
+            <rect x="44" y="20" width="78" height="76" rx="12" fill="#fff" stroke="#c7d2fe" stroke-width="2" />
+            <rect x="56" y="34" width="40" height="6" rx="3" fill="#c7d2fe" />
+            <rect x="56" y="48" width="54" height="6" rx="3" fill="#e6e8ee" />
+            <rect x="56" y="60" width="30" height="6" rx="3" fill="#e6e8ee" />
+            <rect x="56" y="76" width="22" height="10" rx="5" fill="#d1fae5" />
+            <path d="M118 52 98 60v14c0 13 9 22 20 26 11-4 20-13 20-26V60z" fill="#4338ca" />
+            <path d="m110 76 6 6 11-12" fill="none" stroke="#fff" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" />
+          </svg>
           <h3>No disputes yet</h3>
-          <p>When a customer opens a chargeback, it shows up here with a win score and ready evidence.</p>
-          <p id="empty-hint" class="muted" hidden>Press "Simulate chargeback" to see how it works.</p>
+          <p class="muted">When a buyer opens a chargeback it lands here, scored, with its evidence pulled from your receipts.</p>
+          <div id="empty-actions" class="empty-actions" hidden>
+            <button id="empty-simulate" class="btn btn-primary" type="button">Simulate your first chargeback</button>
+            <button id="empty-seed" class="btn" type="button">Load sample disputes</button>
+          </div>
+          <p id="empty-live" class="muted" hidden>Press "Sync from PayPal" to pull your open disputes.</p>
         </div>
       </div>
 

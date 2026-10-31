@@ -300,7 +300,7 @@ export function createDetail(opts: { onClose: (id: string) => void; onSubmitted:
     settleActions.hidden = true;
     confirmBox.hidden = false;
     el("accept-question").innerHTML = `<strong>Accept the claim?</strong> <span>The buyer gets ${esc(amt)} back and the dispute closes. This can't be undone.</span>`;
-    acceptYes.textContent = `Yes, accept and refund ${amt}`;
+    acceptYes.textContent = `Accept · ${amt}`; // short so it stays one line; the question above says what it does
     el("accept-cancel").focus(); // the safe choice has focus: Enter alone never gives money back
   }
 
@@ -419,6 +419,8 @@ export function createDetail(opts: { onClose: (id: string) => void; onSubmitted:
       sending = false;
       if (current?.id === d.id) {
         paintHeader();
+        // the button just went disabled and took focus with it: hand it to the result so it is read out and Escape still works
+        result.querySelector<HTMLElement>(".banner")?.focus();
         void refreshAudit();
       }
     }
@@ -441,12 +443,22 @@ export function createDetail(opts: { onClose: (id: string) => void; onSubmitted:
     void act("offer", { amount: offerAmount.value.trim(), note: offerNote.value });
   });
   el("detail-close").addEventListener("click", () => close());
-  panel.addEventListener("keydown", (ev) => {
-    if (ev.key === "Escape") {
+  // on the document, not the panel: focus can be outside it (a button that went disabled, the toast, the page)
+  document.addEventListener("keydown", (ev) => {
+    if (ev.key === "Escape" && current) {
       ev.stopPropagation();
       close();
     }
   });
+
+  // a floating sheet on desktop that starts below the header, so Autopilot, Sync and Simulate stay in reach
+  const header = document.querySelector<HTMLElement>("header.top");
+  function place(): void {
+    if (!current || !header) return;
+    panel.style.setProperty("--panel-top", `${Math.max(12, Math.round(header.getBoundingClientRect().bottom) + 12)}px`);
+  }
+  window.addEventListener("resize", place);
+  window.addEventListener("scroll", place, { passive: true });
 
   function close(): void {
     if (!current) return;
@@ -467,6 +479,7 @@ export function createDetail(opts: { onClose: (id: string) => void; onSubmitted:
       result.innerHTML = "";
       delete result.dataset.shown;
       panel.hidden = false;
+      place();
       panel.focus();
       void load(d);
     },

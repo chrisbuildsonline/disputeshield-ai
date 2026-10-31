@@ -19,6 +19,7 @@ import {
   statusLabel,
   takeTokenFromHash,
   timeLeft,
+  type AuditRow,
   type Autopilot,
   type Dispute,
   type Summary,
@@ -79,11 +80,12 @@ const columns: ColDef<Dispute>[] = [
   {
     colId: "status",
     headerName: "Status",
-    width: 160,
+    width: 272, // "Open" + "Needs review" side by side; a long PayPal status puts Needs review on a second line
     cellRenderer: (p: ICellRendererParams<Dispute>) =>
       p.data
-        ? badge(statusLabel(p.data.status), needsAction(p.data) ? "badge-red" : "badge-calm") +
-          (p.data.review_reasons ? ` ${badge("Needs review", "badge-amber")}` : "")
+        ? `<span class="pills">${badge(statusLabel(p.data.status), needsAction(p.data) ? "badge-red" : "badge-calm")}${
+            p.data.review_reasons ? badge("Needs review", "badge-amber") : ""
+          }</span>`
         : "",
   },
   {
@@ -126,6 +128,8 @@ const columns: ColDef<Dispute>[] = [
 let rows: Dispute[] = [];
 let lastJson = "";
 let loaded = false;
+let known: Set<string> | null = null; // ids in the last list, null before the first answer
+const watching = new Set<string>(); // new cases whose autopilot run the console will report with a toast
 
 const detail = createDetail({
   onClose: (id) => {
@@ -271,6 +275,9 @@ async function refresh(): Promise<void> {
     const json = JSON.stringify(next);
     if (json !== lastJson) {
       lastJson = json;
+      // a case that turns up on its own (a PayPal webhook) gets its autopilot result reported; samples loading in bulk don't
+      if (known && busy === 0) for (const d of next) if (!known.has(d.id)) watching.add(d.id);
+      known = new Set(next.map((d) => d.id));
       rows = next;
       gridApi.setGridOption("rowData", rows); // getRowId makes this a delta update: selection and scroll stay
       for (const d of rows) detail.update(d);
@@ -279,6 +286,7 @@ async function refresh(): Promise<void> {
     gridApi.refreshCells({ columns: ["due"], force: true }); // the countdown moves even when the data does not
     paintEmpty();
     if (detail.isOpen()) detail.refreshAudit();
+    for (const d of rows) if (watching.has(d.id)) void reportAutopilot(d);
   } catch {
     statusEl.textContent = "Connection lost, retrying...";
   }
@@ -293,19 +301,53 @@ function focusRow(id: string): void {
   }
 }
 
+/** The autopilot runs after the chargeback is answered: once its row moves (flagged or sent), say what it did. */
+const AUTOPILOT_DONE = new Set(["autopilot_submitted", "autopilot_flagged", "autopilot_skipped"]);
+
+async function reportAutopilot(d: Dispute): Promise<void> {
+  if (!d.review_reasons && needsAction(d)) return; // still running, or not started: the next poll looks again
+  watching.delete(d.id); // before the await, so two polls never report it twice
+  let audit: AuditRow[];
+  try {
+    audit = await api<AuditRow[]>(`/api/disputes/${encodeURIComponent(d.id)}/audit`);
+  } catch {
+    watching.add(d.id);
+    return;
+  }
+  const last = [...audit].reverse().find((a) => AUTOPILOT_DONE.has(a.action));
+  if (!last) {
+    if (audit.some((a) => a.action === "autopilot_started")) watching.add(d.id); // sent, but its own audit row is not in yet
+    return; // otherwise a person acted and the autopilot never ran
+  }
+  const x = last.detail;
+  if (last.action === "autopilot_submitted") {
+    toast("good", `Autopilot submitted evidence for ${d.id}`, [`Win probability ${String(x.probability)}% · status ${statusLabel(String(x.status))}`], simulateBtn);
+  } else if (last.action === "autopilot_flagged") {
+    toast("warn", `Autopilot flagged ${d.id} for review`, Array.isArray(x.reasons) ? x.reasons.map(String) : [], simulateBtn);
+  }
+}
+
 async function simulate(btn: HTMLButtonElement): Promise<void> {
+  const label = btn.textContent ?? "";
   btn.disabled = true;
+  btn.setAttribute("aria-busy", "true");
+  // the local model reads the receipt PDF: that can take half a minute in Docker
+  btn.innerHTML = `<span class="spinner" aria-hidden="true"></span>Reading the receipt…`;
   try {
     const d = await whileBusy(async () => {
       const made = await api<Dispute>("/api/demo/chargeback", "POST");
+      watching.add(made.id);
       await refresh();
       return made;
     });
     focusRow(d.id);
-  } catch {
-    if (!gateOpen()) statusEl.textContent = "Could not create the demo chargeback. Is demo mode on?";
+  } catch (e) {
+    const why = e instanceof ApiError && e.status === 404 ? "Demo mode is off on this server." : errorText(e);
+    if (!gateOpen()) toast("bad", "Could not create the demo chargeback", [why], btn);
   } finally {
     btn.disabled = false;
+    btn.removeAttribute("aria-busy");
+    btn.textContent = label;
   }
 }
 
@@ -330,10 +372,11 @@ emptySeed.addEventListener("click", async () => {
 const toastEl = byId("toast");
 let toastTimer = 0;
 
-function toast(tone: "good" | "bad", title: string, lines: string[], returnFocus: HTMLElement): void {
+function toast(tone: "good" | "warn" | "bad", title: string, lines: string[], returnFocus: HTMLElement): void {
   window.clearTimeout(toastTimer);
+  const head = esc(title).replace(/\bPP-D-[A-Z0-9]+/g, (id) => `<span class="nowrap">${id}</span>`); // never split an id at its hyphens
   toastEl.innerHTML = `<div class="toast-card toast-${tone}"><span class="toast-dot" aria-hidden="true"></span>
-    <div class="toast-text"><strong>${esc(title)}</strong>${lines.map((l) => `<span>${esc(l)}</span>`).join("")}</div>
+    <div class="toast-text"><strong>${head}</strong>${lines.map((l) => `<span>${esc(l)}</span>`).join("")}</div>
     <button class="toast-close" type="button" aria-label="Dismiss">&times;</button></div>`;
   const hide = () => {
     const hadFocus = toastEl.contains(document.activeElement);
@@ -341,7 +384,7 @@ function toast(tone: "good" | "bad", title: string, lines: string[], returnFocus
     if (hadFocus) returnFocus.focus();
   };
   toastEl.querySelector("button")?.addEventListener("click", hide);
-  if (tone === "good") toastTimer = window.setTimeout(hide, 10000); // errors stay until dismissed
+  if (tone !== "bad") toastTimer = window.setTimeout(hide, 10000); // errors stay until dismissed
 }
 
 const syncBtn = byId<HTMLButtonElement>("sync-btn");
@@ -370,35 +413,55 @@ const apOn = byId<HTMLInputElement>("autopilot-on");
 const apThreshold = byId<HTMLInputElement>("autopilot-threshold");
 const apError = byId("autopilot-error");
 
+const THRESHOLD_HINT = "Use a whole number from 0 to 100.";
+let savedThreshold = 85; // what the server has, sent along when the switch flips while the box holds a bad value
+
+function apHint(text: string): void {
+  apError.textContent = text;
+  apError.hidden = !text;
+}
+
+/** Marks the box invalid (aria-invalid plus a short hint) while it holds anything but a whole number 0-100. */
+function checkThreshold(): boolean {
+  const v = apThreshold.value;
+  const ok = /^\d{1,3}$/.test(v) && Number(v) <= 100;
+  if (ok) apThreshold.removeAttribute("aria-invalid");
+  else apThreshold.setAttribute("aria-invalid", "true");
+  apHint(ok ? "" : THRESHOLD_HINT);
+  return ok;
+}
+
+function showAutopilot(s: Autopilot): void {
+  apOn.checked = s.enabled;
+  savedThreshold = s.threshold;
+  apThreshold.value = String(s.threshold);
+  checkThreshold();
+}
+
 async function saveAutopilot(): Promise<void> {
-  apError.textContent = "";
+  const threshold = checkThreshold() ? Number(apThreshold.value) : savedThreshold;
   try {
-    const s = await api<Autopilot>("/api/autopilot", "PUT", { enabled: apOn.checked, threshold: Number(apThreshold.value) });
-    apOn.checked = s.enabled;
-    apThreshold.value = String(s.threshold);
+    showAutopilot(await api<Autopilot>("/api/autopilot", "PUT", { enabled: apOn.checked, threshold }));
   } catch (e) {
     if (gateOpen()) return;
-    apError.textContent = e instanceof ApiError && e.status === 422 ? "Threshold must be a whole number from 0 to 100." : "Could not save the autopilot setting.";
+    apHint(e instanceof ApiError && e.status === 422 ? THRESHOLD_HINT : "Could not save the autopilot setting.");
   }
 }
 apOn.addEventListener("change", () => void saveAutopilot());
-apThreshold.addEventListener("change", () => void saveAutopilot());
+apThreshold.addEventListener("input", checkThreshold);
+apThreshold.addEventListener("change", () => {
+  if (checkThreshold()) void saveAutopilot(); // a bad value stays in the box, marked, and is not sent
+});
 
 async function loadAutopilot(): Promise<void> {
   try {
-    const s = await api<Autopilot>("/api/autopilot");
-    apOn.checked = s.enabled;
-    apThreshold.value = String(s.threshold);
+    showAutopilot(await api<Autopilot>("/api/autopilot"));
   } catch {
-    if (!gateOpen()) apError.textContent = "Could not load the autopilot setting.";
+    if (!gateOpen()) apHint("Could not load the autopilot setting.");
   }
 }
 
-byId("token-form").addEventListener("submit", async (e) => {
-  e.preventDefault();
-  const input = byId<HTMLInputElement>("token-input");
-  setToken(input.value);
-  input.value = "";
+async function useToken(): Promise<void> {
   tokenTried = true;
   gate.hidden = true;
   document.body.classList.remove("locked");
@@ -406,6 +469,19 @@ byId("token-form").addEventListener("submit", async (e) => {
   await loadAutopilot();
   await refresh();
   if (!gateOpen()) tokenTried = false;
+}
+
+byId("token-form").addEventListener("submit", (e) => {
+  e.preventDefault();
+  const input = byId<HTMLInputElement>("token-input");
+  setToken(input.value);
+  input.value = "";
+  void useToken();
+});
+
+// a fresh link with #token=... pasted into this tab: take it without a reload
+window.addEventListener("hashchange", () => {
+  if (takeTokenFromHash()) void useToken();
 });
 
 try {

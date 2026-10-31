@@ -123,14 +123,15 @@ export function handleUnauthorized(callback: () => void): void {
 }
 
 /** The server prints a link ending in #token=...: keep the token and take it out of the address bar. */
-export function takeTokenFromHash(): void {
+export function takeTokenFromHash(): boolean {
   const params = new URLSearchParams(location.hash.slice(1));
   const fromLink = params.get("token");
-  if (fromLink === null) return;
+  if (fromLink === null) return false;
   setToken(fromLink);
   params.delete("token");
   const rest = params.toString();
   history.replaceState(null, "", location.pathname + location.search + (rest ? `#${rest}` : ""));
+  return true;
 }
 
 export async function api<T>(path: string, method = "GET", json?: unknown): Promise<T> {

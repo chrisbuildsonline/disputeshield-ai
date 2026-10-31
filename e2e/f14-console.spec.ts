@@ -172,7 +172,7 @@ test("the KPI strip follows an action at once", async ({ page }) => {
   const detail = page.getByRole("dialog", { name: `Dispute ${madrid.id}` });
   await expect(detail.getByRole("heading", { name: "Win probability" })).toBeVisible();
   await detail.getByRole("button", { name: "Accept claim" }).click();
-  await detail.getByRole("button", { name: /^Yes, accept and refund/ }).click();
+  await detail.getByRole("button", { name: /^Accept · / }).click();
   await expect(detail.getByRole("button", { name: "Claim accepted" })).toBeVisible();
 
   // sooner than the 3 s poll: the action itself refreshes the strip

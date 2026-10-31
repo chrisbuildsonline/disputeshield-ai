@@ -157,7 +157,7 @@ test("a weak case recommends accepting, and accepting needs a confirm step", asy
 
   // the first click only asks; Cancel backs out and gives focus back
   await accept.click();
-  const confirmYes = detail.getByRole("button", { name: "Yes, accept and refund $49.90" });
+  const confirmYes = detail.getByRole("button", { name: "Accept · $49.90" });
   await expect(confirmYes).toBeVisible();
   await expect(detail.getByText("The buyer gets $49.90 back and the dispute closes.")).toBeVisible();
   await detail.getByRole("button", { name: "Cancel" }).click();

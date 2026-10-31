@@ -19,9 +19,11 @@
       <div class="top-actions">
         <span id="demo-badge" class="badge badge-demo" hidden>Demo mode</span>
         <div class="autopilot">
-          <label><input id="autopilot-on" type="checkbox" role="switch" /> Autopilot</label>
-          <label>Threshold <input id="autopilot-threshold" type="number" min="0" max="100" step="1" value="85" /></label>
-          <span id="autopilot-error" class="urgent" role="alert"></span>
+          <label class="ap-switch"><input id="autopilot-on" class="switch" type="checkbox" role="switch" /> Autopilot</label>
+          <span class="ap-sep" aria-hidden="true"></span>
+          <label class="ap-threshold" for="autopilot-threshold">Threshold</label>
+          <input id="autopilot-threshold" class="pill-input" type="number" inputmode="numeric" min="0" max="100" step="1" value="85" aria-describedby="autopilot-error" />
+          <span id="autopilot-error" class="ap-hint" role="alert" hidden></span>
         </div>
         <button id="sync-btn" class="btn" type="button">Sync from PayPal</button>
         <button id="simulate-btn" class="btn btn-primary" type="button" hidden>Simulate chargeback</button>

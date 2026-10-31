@@ -43,14 +43,18 @@ test("simulate a chargeback, review the evidence and submit it", async ({ page }
   await expect(detail).toBeVisible();
   await expect(detail.getByRole("heading", { name: "Extracted evidence" })).toBeVisible();
   await expect(detail.getByText("1Z999AA10123456784", { exact: true })).toBeVisible();
-  await expect(detail.getByText("Regex fallback")).toBeVisible();
+  // no model in the e2e run: the receipt shows the read a real qwen3:8b run made of this exact PDF
+  await expect(detail.locator("#h-evidence ~ .card .badge")).toHaveText("AI · qwen3:8b · recorded");
+  await expect(detail.getByText("Regex fallback")).toHaveCount(0);
   await expect(detail.getByRole("heading", { name: "Win probability" })).toBeVisible();
   await expect(detail.getByLabel("Win probability 100 percent")).toBeVisible();
   await expect(detail.getByText("Delivered to the billing address", { exact: true })).toBeVisible();
   await expect(detail.getByText("Order ID on file", { exact: true })).toBeVisible();
   await expect(detail.getByRole("heading", { name: "Dossier preview" })).toBeVisible();
-  await expect(detail.getByText("It was shipped with UPS under tracking number 1Z999AA10123456784")).toBeVisible();
-  await expect(detail.getByText("Template", { exact: true })).toBeVisible();
+  // and the note is the one a real model run wrote for these exact case facts
+  await expect(detail.locator(".note")).toContainText("1Z999AA10123456784");
+  await expect(detail.locator("#h-dossier ~ .card .badge")).toHaveText(/^AI · \S+ · recorded$/);
+  await expect(detail.getByText("Template", { exact: true })).toHaveCount(0);
   await expect(detail.getByText("Chargeback received (simulated)")).toBeVisible();
   await expect(detail.getByText("Document added: ups_receipt.pdf")).toBeVisible();
   await page.screenshot({ path: `${SHOTS}/f8-detail.png` });

@@ -2,18 +2,19 @@
 
 import os
 from datetime import UTC, datetime, timedelta
+from decimal import Decimal, InvalidOperation
 from pathlib import Path
 from typing import Any, NoReturn
 from uuid import uuid4
 
 from fastapi import APIRouter, BackgroundTasks, HTTPException, Query, Request
 from fastapi.concurrency import run_in_threadpool
-from pydantic import ValidationError
+from pydantic import BaseModel, Field, ValidationError
 
 from app import autopilot, llm, paypal, scorecard, store
 from app.dossier import _validate_files, build_dossier
 from app.extract import MAX_PDF_BYTES, ExtractedEvidence, extract
-from app.scoring import INR, score
+from app.scoring import ACCEPT_BELOW, FIGHT_AT, INR, recommend, score
 from app.webhooks import DisputeResource, dispute_row, read_body
 
 SAMPLES = Path(__file__).parent.parent / "samples"
@@ -115,7 +116,9 @@ async def score_preview(dispute_id: str) -> dict[str, Any]:
             _PREVIEWS.clear()
         _PREVIEWS[key] = preview
     points = [f.weight if f.met else 0 for f in result.factors]
+    action, reason = recommend(result.probability)
     return {
+        "recommendation": {"action": action, "reason": reason, "fight_at": FIGHT_AT, "accept_below": ACCEPT_BELOW},
         "dispute_id": dispute_id,
         "probability": result.probability,
         "base": result.probability - sum(points),
@@ -234,14 +237,20 @@ async def send_evidence(dispute_id: str) -> dict[str, Any]:
     }
 
 
-@router.post("/api/disputes/sync")
-async def sync() -> list[dict[str, str]]:
+NO_KEYS = "PayPal keys are not set: add PAYPAL_CLIENT_ID and PAYPAL_CLIENT_SECRET to .env"
+
+
+@router.post("/api/paypal/sync")
+@router.post("/api/disputes/sync")  # alias kept for the README and the smoke script
+async def sync() -> dict[str, Any]:
     if not _has_paypal_keys():
-        raise HTTPException(409, "PayPal keys not set")
+        raise HTTPException(409, NO_KEYS)
     out: list[dict[str, str]] = []
     try:
         # ponytail: first page of the list only
-        for item in (await paypal.list_disputes()).get("items") or []:
+        listing, debug_id = await paypal.list_disputes_page()
+        fetched_at = datetime.now(UTC).isoformat()
+        for item in listing.get("items") or []:
             body = await paypal.show_dispute(str(item["dispute_id"]))
             try:
                 res = DisputeResource.model_validate(body)
@@ -254,4 +263,151 @@ async def sync() -> list[dict[str, str]]:
         raise HTTPException(
             502, {"message": str(e), "paypal_name": e.name, "debug_id": e.debug_id}
         ) from None
-    return out
+    return {
+        "count": len(out),
+        "fetched_at": fetched_at,
+        "debug_id": debug_id,
+        "mode": "sandbox" if paypal.is_sandbox() else "live",
+        "disputes": out,
+    }
+
+
+# ---- low-odds actions: accept the claim or offer a refund ----
+
+ACCEPT_NOTE = "The seller accepts the claim and will refund the buyer."
+
+
+class AcceptBody(BaseModel):
+    note: str | None = Field(None, max_length=paypal.MAX_NOTE)
+
+
+class OfferBody(BaseModel):
+    amount: str
+    note: str = Field(min_length=1, max_length=paypal.MAX_NOTE)
+
+
+@router.post("/api/disputes/{dispute_id}/accept")
+async def accept(dispute_id: str, body: AcceptBody | None = None) -> dict[str, Any]:
+    note = (body.note if body else None) or ACCEPT_NOTE
+    return await _act(dispute_id, "accept", note, None)
+
+
+@router.post("/api/disputes/{dispute_id}/offer")
+async def offer(dispute_id: str, body: OfferBody) -> dict[str, Any]:
+    return await _act(dispute_id, "offer", body.note, body.amount)
+
+
+def _offer_pending(dispute_id: str) -> bool:
+    """True if the latest 'offered' audit row has no later accept or evidence submission."""
+    for a in reversed(store.list_audit(dispute_id)):
+        if a["action"] in ("accepted", "submitted"):
+            return False
+        if a["action"] == "offered":
+            return True
+    return False
+
+
+async def _act(dispute_id: str, action: str, note: str, value: str | None) -> dict[str, Any]:
+    d = _require_dispute(dispute_id)
+    note = note.strip()
+    if not note:
+        if action == "offer":
+            raise HTTPException(422, "an offer needs a note for the buyer")
+        note = ACCEPT_NOTE
+    amount: dict[str, str] | None = None
+    if value is not None:
+        amount = {"currency_code": str(d["currency"] or "USD"), "value": value.strip()}
+        try:
+            paypal.check_amount(amount)
+        except paypal.PayPalError as e:
+            raise HTTPException(422, str(e)) from None
+        try:
+            too_much = Decimal(amount["value"]) > Decimal(str(d["amount_value"]))
+        except InvalidOperation:  # no usable disputed amount stored: nothing to compare against
+            too_much = False
+        if too_much:
+            raise HTTPException(422, f"offer can't be more than the disputed {d['amount_value']} {amount['currency_code']}")
+    if d["status"] == "RESOLVED" or d["outcome"]:
+        _refuse(dispute_id, 409, "dispute is closed")
+    if action == "offer" and (d["status"] == "WAITING_FOR_BUYER_RESPONSE" or _offer_pending(dispute_id)):
+        _refuse(dispute_id, 409, "an offer is already waiting for the buyer")
+    if d["source"] == "paypal" and not _has_paypal_keys():
+        raise HTTPException(409, NO_KEYS)  # a PayPal dispute is never settled by a demo act
+    mode = "paypal" if d["source"] == "paypal" else "demo"
+    sid = store.claim_submission(dispute_id, f"{action}:{mode}")  # shares the evidence claim: one act per dispute
+    if sid is None:
+        _refuse(dispute_id, 409, "already submitted or acted on")
+    done = "accepted" if action == "accept" else "offered"
+    status = "RESOLVED" if action == "accept" else "WAITING_FOR_BUYER_RESPONSE"
+    response: dict[str, Any] | None = None
+    reconciled = False
+    verified = True
+    try:
+        if mode == "paypal":
+            try:
+                if action == "accept":
+                    response = await paypal.accept_claim(dispute_id, note)
+                else:
+                    assert amount is not None
+                    response = await paypal.make_offer(dispute_id, note, amount)
+            except paypal.PayPalError as e:
+                if not e.ambiguous:
+                    raise
+                # The request may have reached PayPal: releasing the claim could double-refund, so look first.
+                try:
+                    seen = str((await paypal.show_dispute(dispute_id)).get("status") or "")
+                except paypal.PayPalError:
+                    store.finish_submission(sid, "submitted", error=str(e))  # keep the claim
+                    store.add_audit(dispute_id, f"{action}_unconfirmed", {"error": str(e), "debug_id": e.debug_id})
+                    raise HTTPException(
+                        502,
+                        {
+                            "message": f"{e}. PayPal may have received it and the status check failed too: "
+                            "run Sync from PayPal to confirm before trying again.",
+                            "paypal_name": e.name,
+                            "debug_id": e.debug_id,
+                        },
+                    ) from None
+                if not seen or seen == d["status"]:
+                    raise
+                status, reconciled = seen, True
+            else:
+                try:
+                    status = str((await paypal.show_dispute(dispute_id)).get("status") or status)
+                except paypal.PayPalError:  # the action is done; keep the expected status and say it is unconfirmed
+                    verified = False
+    except HTTPException:
+        raise
+    except paypal.PayPalError as e:
+        store.finish_submission(sid, "failed", error=str(e))
+        store.add_audit(dispute_id, f"{action}_failed", {"error": str(e), "debug_id": e.debug_id})
+        raise HTTPException(
+            502, {"message": str(e), "paypal_name": e.name, "debug_id": e.debug_id}
+        ) from None
+    except BaseException as e:
+        store.finish_submission(sid, "failed", error=f"{type(e).__name__}: {e}")
+        store.add_audit(dispute_id, f"{action}_failed", {"error": type(e).__name__})
+        raise
+    # "offered" is outside the live index: the buyer may refuse, and then the seller can still accept or send evidence
+    store.finish_submission(sid, "offered" if action == "offer" else "submitted", response=response)
+    store.set_status(dispute_id, status)
+    store.add_audit(
+        dispute_id,
+        done,
+        {
+            "mode": mode,
+            "status": status,
+            "amount": amount,
+            "note": note,
+            "status_verified": verified,
+            "reconciled": reconciled,
+        },
+    )
+    return {
+        "mode": mode,
+        "demo": mode == "demo",
+        "label": DEMO_LABEL if mode == "demo" else PAYPAL_LABEL,
+        "action": action,
+        "status": status,
+        "paypal_response": response,
+    }

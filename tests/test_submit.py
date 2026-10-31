@@ -303,7 +303,7 @@ def test_paypal_error_is_502_releases_claim_and_retry_works(client: TestClient, 
 def test_sync_without_keys_is_409(client: TestClient) -> None:
     r = client.post("/api/disputes/sync")
     assert r.status_code == 409
-    assert "PayPal keys not set" in r.text
+    assert "PayPal keys are not set" in r.text
 
 
 def test_sync_upserts_with_paypal_source_and_audits(client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -333,11 +333,12 @@ def test_demo_webhook_does_not_downgrade_paypal_source(client: TestClient, monke
 # ---- live sandbox ----
 
 
-def test_live_sandbox_sync_returns_a_list(client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_live_sandbox_sync_returns_a_summary(client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
     if not (REAL_ID and REAL_SECRET):
         pytest.fail("Needs fix: PAYPAL_CLIENT_ID / PAYPAL_CLIENT_SECRET missing from .env")
     monkeypatch.setenv("PAYPAL_CLIENT_ID", REAL_ID)
     monkeypatch.setenv("PAYPAL_CLIENT_SECRET", REAL_SECRET)
     r = client.post("/api/disputes/sync")
     assert r.status_code == 200, r.text
-    assert isinstance(r.json(), list)
+    assert isinstance(r.json()["disputes"], list)
+    assert r.json()["count"] == len(r.json()["disputes"])

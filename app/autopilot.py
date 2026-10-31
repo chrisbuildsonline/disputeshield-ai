@@ -58,8 +58,12 @@ async def _run(dispute_id: str) -> None:
     d = store.get_dispute(dispute_id)
     if d is None:
         return
-    if d["status"] == "RESOLVED" or d["outcome"] or store.has_live_submission(dispute_id):
-        store.add_audit(dispute_id, "autopilot_skipped", {"reason": "closed or already submitted"})
+    if (
+        d["status"] in ("RESOLVED", "WAITING_FOR_BUYER_RESPONSE")  # the second means an offer is out
+        or d["outcome"]
+        or store.has_live_submission(dispute_id)
+    ):
+        store.add_audit(dispute_id, "autopilot_skipped", {"reason": "closed, already submitted or waiting for the buyer"})
         return
     settings = store.get_autopilot()
     store.add_audit(dispute_id, "autopilot_started", {"source": d["source"]})

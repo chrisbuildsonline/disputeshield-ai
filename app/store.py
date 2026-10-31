@@ -248,7 +248,7 @@ def review_reasons() -> dict[str, list[str]]:
     with closing(_connect()) as conn:
         for r in conn.execute(
             "SELECT dispute_id, action, detail FROM audit "
-            "WHERE action IN ('autopilot_flagged', 'autopilot_submitted', 'submitted') ORDER BY id"
+            "WHERE action IN ('autopilot_flagged', 'autopilot_submitted', 'submitted', 'accepted', 'offered') ORDER BY id"
         ):
             if r["action"] == "autopilot_flagged":
                 out[r["dispute_id"]] = list(json.loads(r["detail"]).get("reasons", []))

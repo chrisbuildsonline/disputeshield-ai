@@ -119,7 +119,8 @@ PAYPAL_CLIENT_SECRET=<secret>
 
 What works with keys:
 
-- `POST /api/disputes/sync` pulls the first page of your sandbox disputes into the console (there is no button for it; call it with the operator token, for example from `curl -X POST -H "Authorization: Bearer <token>" http://localhost:8000/api/disputes/sync`).
+- `POST /api/paypal/sync` (alias `/api/disputes/sync`) pulls the first page of your sandbox disputes into the console and returns `{count, fetched_at, debug_id, mode, disputes}` (call it with the operator token, for example from `curl -X POST -H "Authorization: Bearer <token>" http://localhost:8000/api/paypal/sync`).
+- The score route recommends an action: fight at 60% or more, offer a refund from 30% to 59%, accept the claim below 30%. `POST /api/disputes/{id}/accept` (optional `{note}`) and `POST /api/disputes/{id}/offer` (`{amount, note}`) act on it, calling PayPal's sandbox for PayPal disputes and recording a labelled demo result otherwise; each dispute allows one act or evidence submission.
 - Submitting a dispute that came from PayPal calls PayPal's provide-evidence endpoint with the dossier and the PDFs, then reads the dispute status back. The UI says "Sent to PayPal sandbox".
 
 The honest limit: a sandbox dispute has to be opened by a sandbox buyer account on the sandbox website (sandbox.paypal.com). You pay a sandbox merchant with a sandbox buyer, then open a dispute as that buyer. There is no REST-only way to create one. Zero synced disputes is a normal result until you do that. This is why the demo has its own simulated chargeback.

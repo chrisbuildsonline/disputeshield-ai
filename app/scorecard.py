@@ -26,7 +26,10 @@ def merge(evs: list[ExtractedEvidence]) -> Evidence:
 
 def to_dispute(row: dict[str, Any], billing_address: str | None) -> Dispute:
     return Dispute(
-        reason=row["reason"] or "other", amount=row["amount_value"] or "", billing_address=billing_address
+        reason=row["reason"] or "other",
+        amount=row["amount_value"] or "",
+        billing_address=billing_address,
+        currency=row.get("currency"),
     )
 
 

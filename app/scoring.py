@@ -23,6 +23,7 @@ class Dispute:
     reason: str
     amount: Decimal | str
     billing_address: str | None = None
+    currency: str | None = None
 
 
 @dataclass(frozen=True)

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import logging
 from decimal import Decimal
 from pathlib import Path
@@ -12,7 +13,7 @@ from hypothesis import strategies as st
 from app import dossier as ds
 from app.dossier import MAX_NOTES, Dossier, build_dossier, fact_check, template_note
 from app.extract import ExtractedEvidence, extract, to_evidence
-from app.scoring import INR, SNAD, Dispute, score
+from app.scoring import INR, SNAD, Dispute, Evidence, score
 
 SAMPLES = Path(__file__).resolve().parent.parent / "samples"
 UPS = (SAMPLES / "ups_receipt.pdf").read_bytes()
@@ -200,6 +201,34 @@ def test_fact_check_accepts_marked_amounts_equal_by_value(note: str) -> None:
     assert fact_check(note, DISPUTE, _sample_evidence()) == []
 
 
+@pytest.mark.parametrize(
+    ("cur", "value", "shown"),
+    [("USD", "49.90", "USD 49.90"), ("EUR", "128.00", "EUR 128.00"), ("NOK", "1299.00", "NOK 1299.00")],
+)
+def test_template_note_amount_carries_currency(cur: str, value: str, shown: str) -> None:
+    d = Dispute(reason=INR, amount=Decimal(value), billing_address=ADDR, currency=cur)
+    evs = _sample_evidence()
+    note = template_note(d, evs, score(d, to_evidence(evs[0])))
+    assert f"for {shown}." in note
+    assert fact_check(note, d, evs) == []
+
+
+@pytest.mark.parametrize("note", ["Total USD 49.90.", "Total EUR 49.90.", "Total NOK 1,299.00 paid."])
+def test_fact_check_accepts_currency_code_form(note: str) -> None:
+    d = Dispute(reason=INR, amount=Decimal("1299.00") if "NOK" in note else Decimal("49.90"), billing_address=ADDR)
+    assert fact_check(note, d, []) == []
+
+
+def test_fact_check_rejects_invented_amount_with_currency_code() -> None:
+    assert fact_check("Total EUR 128.00 paid.", DISPUTE, _sample_evidence()) != []
+    assert fact_check("Total NOK 50 paid.", DISPUTE, _sample_evidence()) != []
+
+
+def test_prompt_asks_for_currency_codes() -> None:
+    assert "currency code" in ds._PROMPT
+    assert json.loads(ds._facts(Dispute(reason=INR, amount="9.00", currency="EUR"), [], score(DISPUTE, to_evidence(_sample_evidence()[0]))))["dispute_currency"] == "EUR"
+
+
 def test_template_passes_fact_check_on_samples() -> None:
     evs = _sample_evidence()
     note = template_note(DISPUTE, evs, score(DISPUTE, to_evidence(evs[0])))
@@ -243,7 +272,7 @@ def test_conceding_note_falls_back(monkeypatch: pytest.MonkeyPatch, caplog: pyte
 
 def test_facts_for_the_note_carry_no_unmet_factors() -> None:
     evs = _sample_evidence()
-    result = score(DISPUTE, to_evidence(evs[0]))
+    result = score(DISPUTE, Evidence(carrier="UPS"))
     assert any(not f.met for f in result.factors)
     assert "unmet" not in ds._facts(DISPUTE, evs, result)
 

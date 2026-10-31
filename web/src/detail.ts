@@ -219,7 +219,10 @@ export function createDetail(opts: { onClose: (id: string) => void; onSubmitted:
 
   function paintHeader(): void {
     if (!current) return;
-    el("detail-title").textContent = `Dispute ${current.id}`;
+    const idEl = document.createElement("span");
+    idEl.className = "detail-id"; // one unbreakable token: an id split over two lines can't be read back
+    idEl.textContent = current.id;
+    el("detail-title").replaceChildren("Dispute ", idEl);
     const amt = money(current.amount_value, current.currency);
     el("detail-sub").textContent = `${reasonLabel(current.reason)}${amt ? ` · ${amt}` : ""} · ${statusLabel(current.status)}`;
     const why = current.review_reasons;

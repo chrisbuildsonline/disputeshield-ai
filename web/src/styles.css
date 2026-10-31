@@ -838,7 +838,10 @@ kbd {
 .detail-head h2 {
   margin: 0;
   font-size: 18px;
-  word-break: break-all;
+}
+
+.detail-id {
+  white-space: nowrap; /* on a phone the whole id moves to its own line instead of splitting */
 }
 
 .detail-head p {

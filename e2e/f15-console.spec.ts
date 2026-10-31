@@ -67,6 +67,26 @@ async function weakCase(request: APIRequestContext): Promise<string> {
 }
 
 async function openCase(page: Page, id: string) {
+  // the grid only draws the rows near its scroll position: page down until this one is on screen
+  await expect
+    .poll(() =>
+      page.locator("#grid").evaluate((grid, id) => {
+        const rows = Array.from(grid.querySelectorAll(".ag-row[row-id]"));
+        // the element that scrolls the rows: the first ancestor of a row with vertical overflow
+        let v = rows[0]?.parentElement ?? null;
+        while (v && v !== grid && !(v.scrollHeight > v.clientHeight + 1 && /auto|scroll/.test(getComputedStyle(v).overflowY)))
+          v = v.parentElement;
+        const box = (v ?? grid).getBoundingClientRect();
+        const shown = rows.filter((r) => {
+          const b = r.getBoundingClientRect();
+          return b.bottom > box.top && b.top < box.bottom;
+        });
+        if (shown.some((r) => r.getAttribute("row-id") === id)) return true;
+        if (shown.length && v && v !== grid) v.scrollBy(0, v.clientHeight - 56); // one row of overlap, so none is skipped
+        return false;
+      }, id),
+    )
+    .toBe(true);
   await page.locator(`.ag-row[row-id="${id}"] [col-id="reason"]`).click();
   const detail = page.getByRole("dialog", { name: `Dispute ${id}` });
   await expect(detail.getByRole("heading", { name: "Win probability" })).toBeVisible();
@@ -123,6 +143,66 @@ test("the open panel leaves the header controls visible and clickable", async ({
   await page.setViewportSize(MOBILE); // a phone gives the panel the whole screen: one job per screen
   await expect(detail.getByRole("button", { name: "Submit evidence" })).toBeInViewport();
   await page.screenshot({ path: `${SHOTS}/f15-panel-mobile.png` });
+  expect(errors).toEqual([]);
+});
+
+test("on a phone the panel title never splits the dispute id", async ({ page, request }) => {
+  const errors = watchErrors(page);
+  const id = await flaggedCase(request);
+  await page.goto("/#token=e2e-token");
+  const detail = await openCase(page, id);
+  await page.setViewportSize(MOBILE);
+  const title = detail.locator("#detail-title");
+  await expect(title).toHaveText(`Dispute ${id}`);
+
+  const fit = await title.evaluate((h, id) => {
+    // the id's characters, wherever they sit in the heading: every one on the same line
+    const walk = document.createTreeWalker(h, NodeFilter.SHOW_TEXT);
+    let node: Text | null = null;
+    while (walk.nextNode()) if ((walk.currentNode as Text).data.includes(id)) node = walk.currentNode as Text;
+    if (!node) return null;
+    const r = document.createRange();
+    const at = node.data.indexOf(id);
+    r.setStart(node, at);
+    r.setEnd(node, at + id.length);
+    const lines = new Set(Array.from(r.getClientRects()).map((x) => Math.round(x.top))).size;
+    const panel = h.closest(".detail")!.getBoundingClientRect();
+    const box = h.getBoundingClientRect();
+    return { lines, overflow: h.scrollWidth - h.clientWidth, inside: box.left >= panel.left && box.right <= panel.right };
+  }, id);
+  expect(fit).toEqual({ lines: 1, overflow: 0, inside: true });
+
+  // Close stays in thumb reach and keeps its tap target, beside the title
+  const close = detail.getByRole("button", { name: "Close" });
+  await expect(close).toBeInViewport();
+  const c = (await close.boundingBox())!;
+  expect(c.height).toBeGreaterThanOrEqual(40);
+  expect(c.x + c.width).toBeLessThanOrEqual(MOBILE.width);
+  expect(intersects(c, (await title.boundingBox())!)).toBe(false);
+  expect(errors).toEqual([]);
+});
+
+test("a long status and Needs review both show in the status column", async ({ page, request }) => {
+  const errors = watchErrors(page);
+  await request.put("/api/autopilot", { data: { enabled: true, threshold: 85 } }); // a 9% case gets flagged
+  const id = await weakCase(request);
+  await expect
+    .poll(async () => ((await (await request.get("/api/disputes")).json()) as Row[]).find((d) => d.id === id)?.review_reasons ?? null)
+    .not.toBeNull();
+  await page.goto("/#token=e2e-token");
+  const cell = page.locator(`.ag-row[row-id="${id}"] [col-id="status"]`);
+  await expect(cell.locator(".badge")).toHaveText(["Waiting for seller response", "Needs review"]);
+  const clipped = await cell.evaluate((c) => {
+    const r = c.getBoundingClientRect();
+    return Array.from(c.querySelectorAll(".badge"))
+      .filter((b) => {
+        const x = b.getBoundingClientRect();
+        return x.left < r.left || x.right > r.right || x.top < r.top || x.bottom > r.bottom || b.scrollWidth > b.clientWidth;
+      })
+      .map((b) => b.textContent);
+  });
+  expect(clipped).toEqual([]);
+  await page.locator(".grid-wrap").screenshot({ path: `${SHOTS}/f15-grid-long-status.png` });
   expect(errors).toEqual([]);
 });
 

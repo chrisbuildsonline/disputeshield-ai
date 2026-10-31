@@ -207,5 +207,19 @@ def test_seeded_cases_get_recorded_notes(tmp_path: Path, monkeypatch: pytest.Mon
     got = {}
     for s, d in zip(demo.SCENARIOS, c.post("/api/demo/seed").json()["disputes"], strict=True):
         got[s.key] = c.get(f"/api/disputes/{d['id']}/score").json()["dossier"]["note_source"]
-    assert got["leeds"] == "recorded"
-    assert set(got.values()) <= {"recorded", "template"}
+    assert got == {s.key: "recorded" for s in demo.SCENARIOS}
+
+
+@pytest.mark.usefixtures("shipped")
+@pytest.mark.parametrize("s", demo.SCENARIOS, ids=lambda s: s.key)
+def test_every_scenario_has_a_recorded_note_that_passes_the_runtime_check(s: demo.Scenario) -> None:
+    r = demo.resource(s)
+    d = scorecard.to_dispute(
+        {"reason": s.reason, "amount_value": s.value, "currency": s.currency}, scorecard.billing_of(r)
+    )
+    evs = [extract((SAMPLES / n).read_bytes(), use_llm=False) for n in s.docs]
+    entry = recorded.note(ds._facts(d, evs, score(d, scorecard.merge(evs))))
+    assert entry and entry["model"]
+    assert ds.fact_check(entry["note"], d, evs) == [] and not ds._CONCEDES_RE.search(entry["note"])
+    dossier = ds.build_dossier(d, evs, score(d, scorecard.merge(evs)), use_llm=False)
+    assert (dossier.note_source, dossier.note_model) == ("recorded", entry["model"])

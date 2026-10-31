@@ -9,7 +9,7 @@ import pytest
 from hypothesis import given
 from hypothesis import strategies as st
 
-from app.scoring import Dispute, Evidence, ScoreResult, score
+from app.scoring import ACCEPT_BELOW, FIGHT_AT, Dispute, Evidence, ScoreResult, recommend, score
 
 INR = "MERCHANDISE_OR_SERVICE_NOT_RECEIVED"
 UNAUTH = "UNAUTHORISED"
@@ -210,3 +210,21 @@ def test_monotonic_when_enabling_a_field(d: Dispute, e: Evidence, i: int) -> Non
     assert after.probability >= before.probability
     for b, a in zip(before.factors, after.factors, strict=True):
         assert not (b.met and not a.met)
+
+
+# ---- recommendation ----
+
+
+@pytest.mark.parametrize(
+    "p,action",
+    [(0, "accept"), (29, "accept"), (30, "offer_refund"), (59, "offer_refund"), (60, "fight"), (94, "fight"), (100, "fight")],
+)
+def test_recommend_boundaries(p: int, action: str) -> None:
+    got, reason = recommend(p)
+    assert got == action
+    assert str(p) in reason
+    assert reason.endswith(".")
+
+
+def test_recommend_cutoffs_are_documented_constants() -> None:
+    assert (FIGHT_AT, ACCEPT_BELOW) == (60, 30)

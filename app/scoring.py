@@ -191,6 +191,22 @@ _RULES: dict[str, tuple[int, list[tuple[str, int, Check]]]] = {
 }
 
 
+FIGHT_AT = 60  # win probability at or above this: fight with evidence
+ACCEPT_BELOW = 30  # below this: not worth fighting, accept the claim; in between, offer a refund
+
+
+def recommend(probability: int) -> tuple[str, str]:
+    """(action, plain-English reason) for a win probability: "fight", "offer_refund" or "accept"."""
+    if probability >= FIGHT_AT:
+        return "fight", f"A {probability}% chance of winning is at or above {FIGHT_AT}%, so the evidence is worth sending."
+    if probability >= ACCEPT_BELOW:
+        return (
+            "offer_refund",
+            f"A {probability}% chance of winning is between {ACCEPT_BELOW}% and {FIGHT_AT}%, so a partial refund offer is the safer move.",
+        )
+    return "accept", f"A {probability}% chance of winning is below {ACCEPT_BELOW}%, so accepting the claim costs less than fighting."
+
+
 def score(dispute: Dispute, evidence: Evidence) -> ScoreResult:
     base, rules = _RULES.get(dispute.reason, _RULES["other"])
     factors = [Factor(label, weight, bool(check(dispute, evidence))) for label, weight, check in rules]

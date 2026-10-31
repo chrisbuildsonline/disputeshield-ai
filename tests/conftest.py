@@ -47,6 +47,17 @@ def operator_token(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 @pytest.fixture(autouse=True)
+def no_recorded(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Any:
+    """No recorded model reads by default, so the fallback tests see the regex parser; test_recorded.py opts in."""
+    from app import recorded
+
+    monkeypatch.setattr(recorded, "PATH", tmp_path / "no-recorded.json")
+    recorded.load.cache_clear()
+    yield
+    recorded.load.cache_clear()
+
+
+@pytest.fixture(autouse=True)
 def llm_off(monkeypatch: pytest.MonkeyPatch) -> None:
     """Fallbacks only by default; tests that want a model set DISPUTESHIELD_LLM themselves."""
     monkeypatch.setenv("DISPUTESHIELD_LLM", "off")

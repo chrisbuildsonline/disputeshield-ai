@@ -18,7 +18,7 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
-from app import llm
+from app import llm, recorded
 from app.scoring import Evidence
 
 logger = logging.getLogger(__name__)
@@ -43,7 +43,7 @@ class EvidenceFields(BaseModel):
 
 
 class ExtractedEvidence(EvidenceFields):
-    source: Literal["ollama", "claude", "fallback"] = "fallback"
+    source: Literal["ollama", "claude", "recorded", "fallback"] = "fallback"
     model: str | None = None
 
 
@@ -184,7 +184,7 @@ _NOT_STATED = {"", "null", "none", "n/a", "na", "unknown", "not stated"}
 
 
 def _guard(
-    fields: dict[str, Any], source: Literal["ollama", "claude"], model: str, text: str, fill: ExtractedEvidence | None = None
+    fields: dict[str, Any], source: Literal["ollama", "claude", "recorded"], model: str, text: str, fill: ExtractedEvidence | None = None
 ) -> ExtractedEvidence:
     """Validate a model's fields. Small models write "null" or "N/A" as text; fields they left empty are taken from `fill`."""
     data = EvidenceFields.model_validate(fields).model_dump()
@@ -268,4 +268,16 @@ def extract(pdf: bytes, *, use_llm: bool = True) -> ExtractedEvidence:
             return _claude(pdf, text)
     except Exception as e:
         logger.warning("%s extraction failed, using fallback: %s: %s", which.capitalize(), type(e).__name__, str(e)[:200])
-    return parse_text(text)
+    return _recorded(pdf, text) or parse_text(text)
+
+
+def _recorded(pdf: bytes, text: str) -> ExtractedEvidence | None:
+    """The model's recorded read of these exact bytes, through the same guard and regex fill as a live read."""
+    entry = recorded.pdf(pdf)
+    if entry is None or not text.strip():
+        return None
+    try:
+        return _guard(entry["fields"], "recorded", str(entry.get("model") or ""), text, fill=parse_text(text))
+    except Exception as e:
+        logger.warning("recorded read unusable: %s: %s", type(e).__name__, str(e)[:200])
+        return None

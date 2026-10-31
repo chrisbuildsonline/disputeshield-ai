@@ -17,7 +17,7 @@ from dataclasses import dataclass, field
 from decimal import Decimal, InvalidOperation
 from typing import Any, Literal
 
-from app import llm
+from app import llm, recorded
 from app.extract import DEFAULT_MODEL, ExtractedEvidence
 from app.scoring import INR, Dispute, ScoreResult
 
@@ -56,7 +56,7 @@ _FALLBACK_NOTE = "Supporting documents are attached for review."
 class Dossier:
     input: dict[str, Any]
     files: list[tuple[str, bytes]]
-    note_source: Literal["ollama", "claude", "template"]
+    note_source: Literal["ollama", "claude", "recorded", "template"]
     note_model: str | None = None
     notes: list[str] = field(default_factory=list)  # why a model note was not used, if so
 
@@ -306,7 +306,7 @@ def _claude_note(dispute: Dispute, evidence: list[ExtractedEvidence], result: Sc
 
 def _choose_note(
     dispute: Dispute, evs: list[ExtractedEvidence], result: ScoreResult, use_llm: bool
-) -> tuple[str, Literal["ollama", "claude", "template"], str | None, list[str]]:
+) -> tuple[str, Literal["ollama", "claude", "recorded", "template"], str | None, list[str]]:
     why: list[str] = []
     which = llm.provider() if use_llm else "off"
     if which != "off":
@@ -320,7 +320,14 @@ def _choose_note(
             why.append(f"{name} note failed fact check: {bad[:5]}" if bad else f"{name} note concedes the claim or asks a question")
         except Exception as e:
             why.append(f"{name} note failed: {type(e).__name__}: {str(e)[:200]}")
-        logger.warning("using template note: %s", why[-1])
+        logger.warning("using recorded or template note: %s", why[-1])
+    entry = recorded.note(_facts(dispute, evs, result))  # same facts, same hash: a note the model wrote for this exact case
+    if entry:
+        text = _truncate(entry["note"])
+        bad = fact_check(text, dispute, evs)
+        if text and not bad and not _CONCEDES_RE.search(text):
+            return text, "recorded", str(entry.get("model") or "") or None, why
+        why.append(f"Recorded note failed fact check: {bad[:5]}" if bad else "Recorded note concedes the claim or asks a question")
     note = template_note(dispute, evs, result)
     if fact_check(note, dispute, evs):  # should never happen; the fallback has no facts in it
         note = _FALLBACK_NOTE

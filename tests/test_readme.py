@@ -160,6 +160,13 @@ def test_readme_shots_script_is_wired_and_documented() -> None:
     assert any(src.startswith("docs/screenshots/") for _, src in _images())
 
 
+def test_readme_explains_recorded_reads() -> None:
+    assert "samples/recorded.json" in README and "bun run llm:record" in README
+    assert (ROOT / "samples" / "recorded.json").is_file()
+    scripts = json.loads((ROOT / "package.json").read_text(encoding="utf-8"))["scripts"]
+    assert "scripts/record_llm.py" in scripts["llm:record"]
+
+
 def test_env_files_are_ignored_correctly() -> None:
     lines = (ROOT / ".gitignore").read_text(encoding="utf-8").splitlines()
     assert ".env" in lines

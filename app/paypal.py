@@ -17,9 +17,16 @@ _token: tuple[str, float] | None = None
 
 class PayPalError(Exception):
     def __init__(
-        self, message: str, *, status: int | None = None, name: str | None = None, debug_id: str | None = None
+        self,
+        message: str,
+        *,
+        status: int | None = None,
+        name: str | None = None,
+        debug_id: str | None = None,
+        ambiguous: bool = False,
     ) -> None:
         super().__init__(message)
+        self.ambiguous = ambiguous  # the request may have reached PayPal (timeout / dropped connection)
         self.status = status
         self.name = name
         self.debug_id = debug_id
@@ -76,9 +83,13 @@ def _dispute_url(dispute_id: str, suffix: str = "") -> str:
     return f"/v1/customer/disputes/{dispute_id}{suffix}"
 
 
-def _require_sandbox() -> None:
+def is_sandbox() -> bool:
     u = urlsplit(api_base())
-    if u.scheme != "https" or not (u.hostname or "").endswith(".sandbox.paypal.com"):
+    return u.scheme == "https" and (u.hostname or "").endswith(".sandbox.paypal.com")
+
+
+def _require_sandbox() -> None:
+    if not is_sandbox():
         raise PayPalError("sandbox-only call refused: PAYPAL_API_BASE is not the sandbox")
 
 
@@ -100,6 +111,11 @@ def _error(r: httpx.Response) -> PayPalError:
 
 
 async def _call(method: str, path: str, **kwargs: Any) -> dict[str, Any]:
+    return (await _call_with_debug_id(method, path, **kwargs))[0]
+
+
+async def _call_with_debug_id(method: str, path: str, **kwargs: Any) -> tuple[dict[str, Any], str | None]:
+    """Like _call, plus the paypal-debug-id response header."""
     global _token
     r: httpx.Response | None = None
     for attempt in (1, 2):
@@ -110,9 +126,9 @@ async def _call(method: str, path: str, **kwargs: Any) -> dict[str, Any]:
                     method, f"{api_base()}{path}", headers={"Authorization": f"Bearer {token}"}, **kwargs
                 )
         except httpx.TimeoutException as e:
-            raise PayPalError(f"PayPal request timed out: {method} {path}") from e
+            raise PayPalError(f"PayPal request timed out: {method} {path}", ambiguous=True) from e
         except httpx.HTTPError as e:
-            raise PayPalError(f"PayPal request failed: {type(e).__name__}") from e
+            raise PayPalError(f"PayPal request failed: {type(e).__name__}", ambiguous=True) from e
         if r.status_code == 401 and attempt == 1:
             _token = None
             continue
@@ -120,26 +136,40 @@ async def _call(method: str, path: str, **kwargs: Any) -> dict[str, Any]:
     assert r is not None
     if not 200 <= r.status_code < 300:
         raise _error(r)
+    debug_id = r.headers.get("paypal-debug-id")
     if not r.content:
-        return {}
+        return {}, debug_id
     try:
         body = r.json()
     except ValueError as e:
         raise PayPalError(f"PayPal HTTP {r.status_code} with a non-JSON body", status=r.status_code) from e
     if not isinstance(body, dict):
         raise PayPalError(f"PayPal HTTP {r.status_code} with an unexpected body", status=r.status_code)
-    return body
+    return body, debug_id
 
 
-async def list_disputes(
+async def list_disputes_page(
     *, page_size: int | None = None, disputed_transaction_id: str | None = None, start_time: str | None = None
-) -> dict[str, Any]:
+) -> tuple[dict[str, Any], str | None]:
+    """The list body and the call's paypal-debug-id header."""
     filters = (
         ("page_size", page_size),
         ("disputed_transaction_id", disputed_transaction_id),
         ("start_time", start_time),
     )
-    return await _call("GET", "/v1/customer/disputes", params={k: v for k, v in filters if v is not None})
+    return await _call_with_debug_id(
+        "GET", "/v1/customer/disputes", params={k: v for k, v in filters if v is not None}
+    )
+
+
+async def list_disputes(
+    *, page_size: int | None = None, disputed_transaction_id: str | None = None, start_time: str | None = None
+) -> dict[str, Any]:
+    return (
+        await list_disputes_page(
+            page_size=page_size, disputed_transaction_id=disputed_transaction_id, start_time=start_time
+        )
+    )[0]
 
 
 async def show_dispute(dispute_id: str) -> dict[str, Any]:
@@ -164,6 +194,56 @@ async def require_evidence(dispute_id: str, action: str) -> dict[str, Any]:
     if action not in _ACTIONS:
         raise PayPalError(f"action must be one of {_ACTIONS}")
     return await _call("POST", path, json={"action": action})
+
+
+_OFFER_TYPES = ("REFUND", "REFUND_WITH_RETURN", "REFUND_WITH_REPLACEMENT", "REPLACEMENT_WITHOUT_REFUND")
+_VALUE_RE = re.compile(r"[0-9]+(\.[0-9]{1,2})?")
+_CURRENCY_RE = re.compile(r"[A-Z]{3}")
+MAX_NOTE = 2000
+
+
+def _check_note(note: str) -> None:
+    if not isinstance(note, str) or not note.strip():
+        raise PayPalError("note must not be empty")
+    if len(note) > MAX_NOTE:
+        raise PayPalError(f"note must be at most {MAX_NOTE} characters")
+
+
+def check_amount(amount: dict[str, Any]) -> None:
+    value, code = amount.get("value"), amount.get("currency_code")
+    if (
+        not isinstance(value, str)
+        or not _VALUE_RE.fullmatch(value)
+        or float(value) <= 0
+        or not isinstance(code, str)
+        or not _CURRENCY_RE.fullmatch(code)
+    ):
+        raise PayPalError("amount must be a positive decimal string with a 3-letter currency_code")
+
+
+async def accept_claim(dispute_id: str, note: str, refund_amount: dict[str, Any] | None = None) -> dict[str, Any]:
+    """Accept the buyer's claim and refund. Moves real money in live mode, so sandbox only."""
+    path = _dispute_url(dispute_id, "/accept-claim")
+    _require_sandbox()
+    _check_note(note)
+    body: dict[str, Any] = {"note": note, "accept_claim_type": "REFUND"}
+    if refund_amount is not None:
+        check_amount(refund_amount)
+        body["refund_amount"] = refund_amount
+    return await _call("POST", path, json=body)
+
+
+async def make_offer(
+    dispute_id: str, note: str, amount: dict[str, Any], offer_type: str = "REFUND"
+) -> dict[str, Any]:
+    """Offer the buyer a resolution. Moves real money in live mode, so sandbox only."""
+    path = _dispute_url(dispute_id, "/make-offer")
+    _require_sandbox()
+    _check_note(note)
+    check_amount(amount)
+    if offer_type not in _OFFER_TYPES:
+        raise PayPalError(f"offer_type must be one of {_OFFER_TYPES}")
+    return await _call("POST", path, json={"note": note, "offer_amount": amount, "offer_type": offer_type})
 
 
 async def adjudicate(dispute_id: str, outcome: str) -> dict[str, Any]:

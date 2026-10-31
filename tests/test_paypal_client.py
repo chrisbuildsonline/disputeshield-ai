@@ -299,7 +299,211 @@ def test_sandbox_helpers_reject_unknown_values(fn: str, arg: str) -> None:
         assert len(router.calls) == 0
 
 
+# ---- list debug id ----
+
+
+def test_list_disputes_page_exposes_debug_id_header() -> None:
+    with respx.mock() as router:
+        token_ok(router)
+        router.get(D).mock(return_value=httpx.Response(200, json={"items": []}, headers={"Paypal-Debug-Id": "dbg9"}))
+        body, debug_id = run(paypal.list_disputes_page())
+    assert body == {"items": []}
+    assert debug_id == "dbg9"
+
+
+def test_list_disputes_page_debug_id_none_without_header() -> None:
+    with respx.mock() as router:
+        token_ok(router)
+        router.get(D).mock(return_value=httpx.Response(200, json={}))
+        assert run(paypal.list_disputes_page())[1] is None
+
+
+# ---- accept_claim / make_offer ----
+
+AMT = {"currency_code": "USD", "value": "12.50"}
+
+
+def both(dispute_id: str, note: str, amount: dict[str, Any]) -> list[Callable[[], Coroutine[Any, Any, Any]]]:
+    return [lambda: paypal.accept_claim(dispute_id, note, amount), lambda: paypal.make_offer(dispute_id, note, amount)]
+
+
+def test_accept_claim_body_and_url() -> None:
+    with respx.mock() as router:
+        token_ok(router)
+        route = router.post(f"{D}/PP-D-1/accept-claim").mock(return_value=httpx.Response(200, json={"links": []}))
+        assert run(paypal.accept_claim("PP-D-1", "refund it")) == {"links": []}
+    assert json.loads(route.calls.last.request.content) == {"note": "refund it", "accept_claim_type": "REFUND"}
+    assert route.calls.last.request.headers["authorization"] == "Bearer tok"
+
+
+def test_accept_claim_with_refund_amount() -> None:
+    with respx.mock() as router:
+        token_ok(router)
+        route = router.post(f"{D}/PP-D-1/accept-claim").mock(return_value=httpx.Response(200, json={}))
+        run(paypal.accept_claim("PP-D-1", "n", AMT))
+    assert json.loads(route.calls.last.request.content) == {
+        "note": "n",
+        "accept_claim_type": "REFUND",
+        "refund_amount": AMT,
+    }
+
+
+def test_make_offer_body_and_url() -> None:
+    with respx.mock() as router:
+        token_ok(router)
+        route = router.post(f"{D}/PP-D-1/make-offer").mock(return_value=httpx.Response(200, json={"ok": 1}))
+        assert run(paypal.make_offer("PP-D-1", "half back", AMT)) == {"ok": 1}
+    assert json.loads(route.calls.last.request.content) == {
+        "note": "half back",
+        "offer_amount": AMT,
+        "offer_type": "REFUND",
+    }
+
+
+@pytest.mark.parametrize("kind", ["REFUND", "REFUND_WITH_RETURN", "REFUND_WITH_REPLACEMENT", "REPLACEMENT_WITHOUT_REFUND"])
+def test_make_offer_types(kind: str) -> None:
+    with respx.mock() as router:
+        token_ok(router)
+        route = router.post(f"{D}/PP-D-1/make-offer").mock(return_value=httpx.Response(200, json={}))
+        run(paypal.make_offer("PP-D-1", "n", AMT, kind))
+    assert json.loads(route.calls.last.request.content)["offer_type"] == kind
+
+
+@pytest.mark.parametrize("bad", BAD_IDS)
+def test_action_bad_ids_rejected_without_http(bad: str) -> None:
+    for make in both(bad, "n", AMT):
+        with respx.mock(assert_all_called=False) as router:
+            with pytest.raises(PayPalError, match="dispute id"):
+                run(make())
+            assert len(router.calls) == 0
+
+
+@pytest.mark.parametrize("note", ["", "   ", "x" * 2001])
+def test_action_bad_note_rejected_without_http(note: str) -> None:
+    for make in both("PP-D-1", note, AMT):
+        with respx.mock(assert_all_called=False) as router:
+            with pytest.raises(PayPalError, match="note"):
+                run(make())
+            assert len(router.calls) == 0
+
+
+def test_action_note_at_limit_is_accepted() -> None:
+    with respx.mock() as router:
+        token_ok(router)
+        router.post(f"{D}/PP-D-1/accept-claim").mock(return_value=httpx.Response(200, json={}))
+        run(paypal.accept_claim("PP-D-1", "x" * 2000))
+
+
+@pytest.mark.parametrize(
+    "amount",
+    [
+        {"currency_code": "USD", "value": "0"},
+        {"currency_code": "USD", "value": "-1.00"},
+        {"currency_code": "USD", "value": "abc"},
+        {"currency_code": "USD", "value": "NaN"},
+        {"currency_code": "USD", "value": "1e3"},
+        {"currency_code": "USD", "value": 5},
+        {"currency_code": "US", "value": "5"},
+        {"currency_code": "usd", "value": "5"},
+        {"value": "5"},
+        {},
+    ],
+)
+def test_action_bad_amount_rejected_without_http(amount: dict[str, Any]) -> None:
+    for make in both("PP-D-1", "n", amount):
+        with respx.mock(assert_all_called=False) as router:
+            with pytest.raises(PayPalError, match="amount"):
+                run(make())
+            assert len(router.calls) == 0
+
+
+def test_make_offer_rejects_unknown_offer_type() -> None:
+    with respx.mock(assert_all_called=False) as router:
+        with pytest.raises(PayPalError, match="offer_type"):
+            run(paypal.make_offer("PP-D-1", "n", AMT, "NOPE"))
+        assert len(router.calls) == 0
+
+
+@pytest.mark.parametrize("suffix", ["accept-claim", "make-offer"])
+def test_action_paypal_error_carries_debug_id(suffix: str) -> None:
+    err = {"name": "ACTION_NOT_ALLOWED", "message": "no", "debug_id": "dbgA"}
+    with respx.mock() as router:
+        token_ok(router)
+        router.post(f"{D}/PP-D-1/{suffix}").mock(return_value=httpx.Response(422, json=err))
+        with pytest.raises(PayPalError) as ei:
+            if suffix == "accept-claim":
+                run(paypal.accept_claim("PP-D-1", "n"))
+            else:
+                run(paypal.make_offer("PP-D-1", "n", AMT))
+    assert (ei.value.status, ei.value.name, ei.value.debug_id) == (422, "ACTION_NOT_ALLOWED", "dbgA")
+
+
+@pytest.mark.parametrize("exc", [httpx.ReadTimeout("slow"), httpx.ConnectError("down")])
+def test_transport_failure_on_the_request_is_ambiguous(exc: httpx.HTTPError) -> None:
+    with respx.mock() as router:
+        token_ok(router)
+        router.post(f"{D}/PP-D-1/accept-claim").mock(side_effect=exc)
+        with pytest.raises(PayPalError) as ei:
+            run(paypal.accept_claim("PP-D-1", "n"))
+    assert ei.value.ambiguous is True
+
+
+def test_http_error_and_token_failure_are_not_ambiguous() -> None:
+    with respx.mock() as router:
+        token_ok(router)
+        router.post(f"{D}/PP-D-1/accept-claim").mock(return_value=httpx.Response(500, json={}))
+        with pytest.raises(PayPalError) as ei:
+            run(paypal.accept_claim("PP-D-1", "n"))
+    assert ei.value.ambiguous is False
+    paypal._token = None
+    with respx.mock() as router:
+        router.post(TOKEN_URL).mock(side_effect=httpx.ConnectTimeout("slow"))
+        with pytest.raises(PayPalError) as ei2:
+            run(paypal.accept_claim("PP-D-1", "n"))
+    assert ei2.value.ambiguous is False
+
+
+@pytest.mark.parametrize("suffix", ["accept-claim", "make-offer"])
+def test_action_401_refreshes_token_and_retries(suffix: str) -> None:
+    with respx.mock() as router:
+        tok = router.post(TOKEN_URL).mock(
+            side_effect=[
+                httpx.Response(200, json={"access_token": "old", "expires_in": 3600}),
+                httpx.Response(200, json={"access_token": "new", "expires_in": 3600}),
+            ]
+        )
+        route = router.post(f"{D}/PP-D-1/{suffix}").mock(
+            side_effect=[httpx.Response(401, json={"name": "AUTHENTICATION_FAILURE"}), httpx.Response(200, json={"ok": 1})]
+        )
+        if suffix == "accept-claim":
+            assert run(paypal.accept_claim("PP-D-1", "n")) == {"ok": 1}
+        else:
+            assert run(paypal.make_offer("PP-D-1", "n", AMT)) == {"ok": 1}
+    assert tok.call_count == 2
+    assert [c.request.headers["authorization"] for c in route.calls] == ["Bearer old", "Bearer new"]
+
+
+def test_actions_refuse_live_base(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("PAYPAL_API_BASE", "https://api-m.paypal.com")
+    with respx.mock(assert_all_called=False) as router:
+        with pytest.raises(PayPalError, match="sandbox"):
+            run(paypal.accept_claim("PP-D-1", "n"))
+        with pytest.raises(PayPalError, match="sandbox"):
+            run(paypal.make_offer("PP-D-1", "n", AMT))
+        assert len(router.calls) == 0
+
+
 # ---- live sandbox ----
+
+
+def test_live_sandbox_list_page_has_debug_id(monkeypatch: pytest.MonkeyPatch) -> None:
+    if not (REAL_ID and REAL_SECRET):
+        pytest.fail("Needs fix: PAYPAL_CLIENT_ID / PAYPAL_CLIENT_SECRET missing from .env")
+    monkeypatch.setenv("PAYPAL_CLIENT_ID", REAL_ID)
+    monkeypatch.setenv("PAYPAL_CLIENT_SECRET", REAL_SECRET)
+    body, debug_id = run(paypal.list_disputes_page(page_size=5))
+    assert isinstance(body, dict)
+    assert debug_id
 
 
 def test_live_sandbox_list_show_and_error(monkeypatch: pytest.MonkeyPatch) -> None:

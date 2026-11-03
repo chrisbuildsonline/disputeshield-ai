@@ -72,6 +72,11 @@ def actions(client: TestClient, did: str) -> list[str]:
     return [a["action"] for a in client.get(f"/api/disputes/{did}/audit").json()]
 
 
+def own_actions(client: TestClient, did: str) -> list[str]:
+    """Without the autopilot's rows: every upload reruns its check, even when it is off."""
+    return [a for a in actions(client, did) if not a.startswith("autopilot_")]
+
+
 def paypal_creds(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("PAYPAL_CLIENT_ID", "id")
     monkeypatch.setenv("PAYPAL_CLIENT_SECRET", "secret")
@@ -129,7 +134,9 @@ def test_upload_then_list_documents(client: TestClient) -> None:
     assert docs[0]["evidence"]["source"] == "fallback"
     assert docs[0]["evidence"]["tracking_number"]
     assert "data" not in docs[0]
-    assert actions(client, did) == ["document_added"]
+    assert own_actions(client, did) == ["document_added"]
+    assert "autopilot_scored" in actions(client, did)  # the check reran on the new evidence, and sent nothing
+    assert client.get(f"/api/disputes/{did}").json()["status"] != "UNDER_REVIEW"
 
 
 def test_upload_unknown_dispute_404(client: TestClient) -> None:
@@ -189,7 +196,7 @@ def test_submit_demo_mode(client: TestClient) -> None:
     assert isinstance(body["submission_id"], int)
     assert 0 <= body["probability"] <= 100
     assert client.get(f"/api/disputes/{did}").json()["status"] == "UNDER_REVIEW"
-    assert actions(client, did) == ["document_added", "submitted"]
+    assert own_actions(client, did) == ["document_added", "submitted"]
 
 
 def test_demo_mode_makes_no_network_call(client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -214,7 +221,7 @@ def test_second_submit_is_409_and_audited(client: TestClient) -> None:
     assert client.post(f"/api/disputes/{did}/submit").status_code == 200
     r = client.post(f"/api/disputes/{did}/submit")
     assert r.status_code == 409
-    assert actions(client, did) == ["document_added", "submitted", "submit_refused"]
+    assert own_actions(client, did) == ["document_added", "submitted", "submit_refused"]
     refused = client.get(f"/api/disputes/{did}/audit").json()[-1]
     assert "already" in refused["detail"]["reason"]
 

@@ -116,14 +116,58 @@ def test_autopilot_on_submits_the_demo_chargeback(client: TestClient) -> None:
     assert client.post(f"/api/disputes/{did}/submit").status_code == 409
 
 
-def test_autopilot_off_flags_for_review(client: TestClient) -> None:
-    """Given autopilot off, when a chargeback arrives, then it is flagged "Waiting for you to review: autopilot is off" and not sent."""
+def test_autopilot_off_good_score_is_awaiting_not_flagged(client: TestClient) -> None:
+    """Given autopilot off and a good score, when a chargeback arrives, then it is not flagged: it records
+    autopilot_awaiting and is not sent."""
     did = simulate(client)
     assert client.get(f"/api/disputes/{did}").json()["status"] == "OPEN"
-    flagged = [a for a in audit(client, did) if a["action"] == "autopilot_flagged"]
-    assert [f["detail"]["reasons"] for f in flagged] == [["Waiting for you to review: autopilot is off"]]
+    log = audit(client, did)
+    assert not [a for a in log if a["action"] == "autopilot_flagged"]
+    assert [a["detail"] for a in log if a["action"] == "autopilot_awaiting"] == [{"probability": 100, "threshold": 85}]
     assert "autopilot_submitted" not in actions(client, did)
-    assert row(client, did)["review_reasons"] == ["Waiting for you to review: autopilot is off"]
+    assert row(client, did)["review_reasons"] is None
+
+
+def test_autopilot_off_low_score_is_flagged(client: TestClient) -> None:
+    """Given autopilot off and a score below the threshold, when evidence arrives, then it is flagged with the gap."""
+    configure(client, False, 100)
+    e = created_event()
+    did = e["resource"]["dispute_id"]
+    assert client.post("/api/webhooks/paypal", json=e).status_code == 200
+    body = (SAMPLES / "ups_receipt.pdf").read_bytes()
+    assert client.post(f"/api/disputes/{did}/documents", params={"name": "ups_receipt.pdf"}, content=body).status_code == 200
+    s = client.get(f"/api/disputes/{did}/score").json()
+    assert s["probability"] < 100
+    asyncio.run(autopilot.run(did))  # with autopilot off nothing starts the agent on a webhook or upload
+    reasons = row(client, did)["review_reasons"]
+    assert reasons and reasons[0] == f"Win probability {s['probability']}% is below the 100% threshold"
+    assert "autopilot_awaiting" not in actions(client, did)
+
+
+def test_autopilot_off_without_documents_is_flagged(client: TestClient) -> None:
+    """Given autopilot off and no evidence documents, when the agent runs, then it is flagged "No evidence documents"."""
+    e = created_event()
+    did = e["resource"]["dispute_id"]
+    assert client.post("/api/webhooks/paypal", json=e).status_code == 200
+    asyncio.run(autopilot.run(did))
+    assert row(client, did)["review_reasons"] == ["No evidence documents"]
+    assert "autopilot_awaiting" not in actions(client, did)
+
+
+def test_awaiting_clears_an_earlier_flag(client: TestClient) -> None:
+    """Given a case flagged for no documents, when a receipt is uploaded with autopilot off and it scores well,
+    then the old flag clears on its own: the upload reruns the check, which never sends while autopilot is off."""
+    configure(client, False, 0)  # the lone receipt is not a full case: a zero bar lets it count as a good score
+    e = created_event()
+    did = e["resource"]["dispute_id"]
+    assert client.post("/api/webhooks/paypal", json=e).status_code == 200
+    asyncio.run(autopilot.run(did))
+    assert row(client, did)["review_reasons"] == ["No evidence documents"]
+    body = (SAMPLES / "ups_receipt.pdf").read_bytes()
+    assert client.post(f"/api/disputes/{did}/documents", params={"name": "ups_receipt.pdf"}, content=body).status_code == 200
+    assert "autopilot_awaiting" in actions(client, did)
+    assert "submitted" not in actions(client, did) and "autopilot_submitted" not in actions(client, did)
+    assert row(client, did)["review_reasons"] is None
 
 
 def test_below_threshold_flags_with_unmet_factors(client: TestClient) -> None:

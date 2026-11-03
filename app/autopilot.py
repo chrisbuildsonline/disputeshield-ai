@@ -87,15 +87,17 @@ async def _run(dispute_id: str) -> None:
         dispute_id, "autopilot_scored", {"probability": result.probability, "threshold": settings["threshold"]}
     )
 
-    if not settings["enabled"]:
-        _flag(dispute_id, "Waiting for you to review: autopilot is off")
-    elif not docs:
+    if not docs:
         _flag(dispute_id, "No evidence documents")
     elif result.probability < settings["threshold"]:
         _flag(
             dispute_id,
             f"Win probability {result.probability}% is below the {settings['threshold']}% threshold",
             *[f.label for f in result.factors if not f.met],
+        )
+    elif not settings["enabled"]:  # nothing wrong: the person just hasn't sent it yet
+        store.add_audit(
+            dispute_id, "autopilot_awaiting", {"probability": result.probability, "threshold": settings["threshold"]}
         )
     else:
         try:

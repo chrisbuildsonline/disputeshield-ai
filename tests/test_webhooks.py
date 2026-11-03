@@ -124,15 +124,15 @@ def test_out_of_order_does_not_overwrite(client: TestClient) -> None:
     assert again.json() == {"duplicate": True}
 
 
-def test_list_newest_first(client: TestClient) -> None:
+def test_list_puts_open_before_resolved(client: TestClient) -> None:
     client.post(URL, json=created())
     other = resolved()
     other["id"] = "WH-OTHER"
     other["resource"]["dispute_id"] = "PP-OTHER"
     client.post(URL, json=other)
     assert [d["id"] for d in client.get("/api/disputes").json()] == [
-        "PP-OTHER",
         "PP-000-042-663-135",
+        "PP-OTHER",
     ]
 
 

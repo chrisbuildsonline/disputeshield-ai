@@ -52,8 +52,9 @@ async def add_document(
 ) -> dict[str, Any]:
     _require_dispute(dispute_id)
     stored = await _store_document(dispute_id, name, await read_body(request, MAX_PDF_BYTES))
-    if autopilot.enabled() and not store.has_live_submission(dispute_id):
-        background.add_task(autopilot.run, dispute_id)  # new evidence may clear an earlier flag
+    if not store.has_live_submission(dispute_id):
+        # new evidence may clear an earlier flag; with autopilot off the rerun only scores and flags, it never sends
+        background.add_task(autopilot.run, dispute_id)
     return stored
 
 

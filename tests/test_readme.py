@@ -50,13 +50,13 @@ def test_readme_env_names_are_read_by_the_code() -> None:
     assert sorted(n for n in names if n not in APP_SOURCE) == []
 
 
-@pytest.mark.parametrize("phrase", ["AG Grid Enterprise", "Claude 3.5", "Invoicing API"])
+@pytest.mark.parametrize("phrase", ["AG Grid Enterprise", "Claude 3.5"])
 def test_stale_phrases_are_gone(phrase: str) -> None:
     assert phrase.lower() not in README.lower()
 
 
 def test_stack_names_what_is_built() -> None:
-    for phrase in ("AG Grid Community", "qwen3:8b", "Ollama", "Disputes API"):
+    for phrase in ("AG Grid Community", "qwen3:8b", "Ollama", "Disputes API", "Invoicing API"):
         assert phrase in README
 
 

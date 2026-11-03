@@ -104,6 +104,7 @@ bun run dev
 | Claude (optional, default model `claude-sonnet-5-5`) | Same two jobs, if you choose it. |
 | pypdf | Turns the PDF into text for the model and for the regex parser. |
 | PayPal Disputes API and webhooks | Reads disputes, verifies webhooks, provides evidence. |
+| PayPal Invoicing API (v2) | Records the disputed order as a draft invoice in the sandbox and reads it back. |
 | AG Grid Community | The dispute table in the console. |
 
 Pick the model with `DISPUTESHIELD_LLM`:
@@ -152,6 +153,7 @@ What works with keys:
 
 - `POST /api/paypal/sync` (alias `/api/disputes/sync`) pulls the first page of your sandbox disputes into the console and returns `{count, fetched_at, debug_id, mode, disputes}` (call it with the operator token, for example from `curl -X POST -H "Authorization: Bearer <token>" http://localhost:8000/api/paypal/sync`).
 - The score route recommends an action: fight at 60% or more, offer a refund from 30% to 59%, accept the claim below 30%. `POST /api/disputes/{id}/accept` (optional `{note}`) and `POST /api/disputes/{id}/offer` (`{amount, note}`) act on it, calling PayPal's sandbox for PayPal disputes and recording a labelled demo result otherwise; each dispute allows one act or evidence submission.
+- A second PayPal API family, Invoicing: `POST /api/disputes/{id}/paypal-invoice` creates a draft invoice (`POST /v2/invoicing/invoices`, nothing is sent to the buyer) for the disputed order and reads it back (`GET /v2/invoicing/invoices/{id}`), as a PayPal-side record of the agreed sale. A recorded invoice adds one small score factor (up to 4 points, never past 100) and is kept in the audit trail with PayPal's debug id. It only runs against the sandbox. Simulated disputes get a fixed fixture labelled "Demo mode", not a PayPal answer. A repeat call returns the first record. (Transaction Search would have been the natural fit, but the sandbox app's token has no reporting scope.)
 - Submitting a dispute that came from PayPal calls PayPal's provide-evidence endpoint with the dossier and the PDFs, then reads the dispute status back. The UI says "Sent to PayPal sandbox".
 
 The honest limit: a sandbox dispute has to be opened by a sandbox buyer account on the sandbox website (sandbox.paypal.com). You pay a sandbox merchant with a sandbox buyer, then open a dispute as that buyer. There is no REST-only way to create one. Zero synced disputes is a normal result until you do that. This is why the demo has its own simulated chargeback.
@@ -237,7 +239,7 @@ PayPal webhook / sync / demo chargeback
 | `app/scoring.py`, `app/scorecard.py` | The scorer, and the glue from stored rows to the scorer. |
 | `app/dossier.py` | Builds the PayPal evidence payload and the rebuttal note. |
 | `app/submit.py` | Documents, score preview, submit, audit and sync routes, demo chargeback. |
-| `app/paypal.py` | OAuth and the Disputes API calls. |
+| `app/paypal.py` | OAuth, the Disputes API calls and the Invoicing API calls. |
 | `app/autopilot.py` | The autopilot settings and agent. |
 | `web/` | The console in TypeScript, built by `bun build` into `app/static`. |
 | `samples/` | The sample UPS receipt and CRM order PDFs. |

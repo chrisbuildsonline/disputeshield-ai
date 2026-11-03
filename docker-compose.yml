@@ -28,6 +28,7 @@ services:
     environment:
       DISPUTESHIELD_DEMO_MODE: ${DISPUTESHIELD_DEMO_MODE:-1}
       PORT: "8000"
+      HOST_PORT: ${HOST_PORT:-8000}
       OLLAMA_HOST: ${OLLAMA_HOST:-http://ollama:11434}
       DISPUTESHIELD_OLLAMA_MODEL: ${DISPUTESHIELD_OLLAMA_MODEL:-qwen2.5:3b}
     depends_on:

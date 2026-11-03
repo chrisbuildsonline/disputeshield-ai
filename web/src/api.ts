@@ -93,6 +93,26 @@ export interface ActResult {
   paypal_response: unknown;
 }
 
+export interface Money {
+  currency_code: string;
+  value: string;
+}
+
+/** POST /api/disputes/{id}/paypal-invoice: a draft invoice in the PayPal sandbox, or a labelled demo fixture. */
+export interface InvoiceResult {
+  mode: "paypal" | "demo";
+  demo: boolean;
+  label: string;
+  status: string;
+  invoice_id: string;
+  invoice_number: string;
+  debug_id: string | null;
+  fields: { total: Money };
+  score_before: number;
+  score_after: number;
+  already_recorded: boolean;
+}
+
 export interface SyncResult {
   count: number;
   fetched_at: string;

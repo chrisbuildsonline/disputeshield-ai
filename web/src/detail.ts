@@ -10,6 +10,8 @@ import {
   type AuditRow,
   type Dispute,
   type Evidence,
+  type InvoiceResult,
+  type Money,
   type RecAction,
   type Score,
   type SubmitResult,
@@ -87,6 +89,14 @@ function auditText(a: AuditRow): string {
       return `Autopilot flagged for review: ${Array.isArray(d.reasons) ? d.reasons.map(String).join("; ") : ""}`;
     case "autopilot_skipped":
       return "Autopilot skipped (closed or already submitted)";
+    case "invoice_recorded": {
+      const num = String(d.invoice_number ?? d.invoice_id ?? "");
+      return d.mode === "paypal"
+        ? `Recorded on PayPal as draft invoice ${num}${d.debug_id ? ` · debug id ${String(d.debug_id)}` : ""}`
+        : `Demo: invoice fixture ${num} recorded, nothing sent to PayPal`;
+    }
+    case "invoice_failed":
+      return `Invoice not recorded: ${String(d.error ?? "")}${d.debug_id ? ` · debug id ${String(d.debug_id)}` : ""}`;
     default:
       return a.action.replace(/_/g, " ");
   }
@@ -172,7 +182,62 @@ function renderAudit(rows: AuditRow[]): string {
     .join("")}</ol>`;
 }
 
-export type Act = "submit" | "accept" | "offer" | "sync";
+const INVOICE_LINE =
+  "Creates a draft invoice in the PayPal sandbox (nothing is sent to the buyer) as a PayPal-side record of the sale. Simulated cases get a labelled demo record.";
+
+/** What the invoice banner shows, from the POST answer or from the invoice_recorded audit row on a reload. */
+interface InvoiceView {
+  demo: boolean;
+  number: string;
+  id: string;
+  total: Money | null;
+  debugId: string | null;
+  before: number | null;
+  after: number | null;
+  already: boolean;
+}
+
+function invoiceFromResult(r: InvoiceResult): InvoiceView {
+  return {
+    demo: r.demo,
+    number: r.invoice_number,
+    id: r.invoice_id,
+    total: r.fields.total,
+    debugId: r.debug_id,
+    before: r.score_before,
+    after: r.score_after,
+    already: r.already_recorded,
+  };
+}
+
+function invoiceFromAudit(d: Record<string, unknown>): InvoiceView {
+  const num = (v: unknown) => (typeof v === "number" ? v : null);
+  const total = d.total as Money | undefined;
+  return {
+    demo: d.mode !== "paypal",
+    number: String(d.invoice_number ?? ""),
+    id: String(d.invoice_id ?? ""),
+    total: total && typeof total === "object" ? total : null,
+    debugId: typeof d.debug_id === "string" ? d.debug_id : null,
+    before: num(d.score_before),
+    after: num(d.score_after),
+    already: false,
+  };
+}
+
+function renderInvoiceBanner(v: InvoiceView): string {
+  const total = v.total ? money(v.total.value, v.total.currency_code) : "";
+  const lines = [
+    `${v.demo ? "Demo invoice" : "Draft invoice"} ${esc(v.number)}${total ? ` · ${esc(total)}` : ""}${v.demo ? "" : " · not sent to the buyer"}`,
+    `Invoice id <span class="mono">${esc(v.id)}</span>${v.debugId ? ` · debug id <span class="mono">${esc(v.debugId)}</span>` : ""}`,
+  ];
+  if (v.before !== null && v.after !== null && v.after !== v.before) lines.push(`Win probability ${v.before}% → ${v.after}%`);
+  if (v.already) lines.push("Recorded earlier: nothing new was created.");
+  const title = v.demo ? DEMO_LABEL : "Recorded on PayPal sandbox";
+  return `<div class="banner banner-${v.demo ? "info" : "good"}" tabindex="-1"><strong>${esc(title)}</strong>${lines.map((l) => `<span>${l}</span>`).join("")}</div>`;
+}
+
+export type Act = "submit" | "accept" | "offer" | "sync" | "invoice";
 
 /** A plain sentence for a failed call. The server's own words are kept where they are already plain. */
 export function errorText(e: unknown, act: Act = "submit"): string {
@@ -192,6 +257,7 @@ export function errorText(e: unknown, act: Act = "submit"): string {
       return `The offer was not sent: ${why}.`;
     }
     if (act === "accept") return `The claim was not accepted: ${text || "check the note"}.`;
+    if (act === "invoice") return `The invoice was not recorded: ${text.replace(/^can't invoice this dispute: /, "") || "the amount can't be invoiced"}.`;
     return `Evidence can't be submitted yet: ${text || "the documents were not accepted"}.`;
   }
   if (e.status === 502 && d && typeof d === "object") {
@@ -236,6 +302,58 @@ export function createDetail(opts: { onClose: (id: string) => void; onSubmitted:
   const acceptYes = el<HTMLButtonElement>("accept-yes");
   let acting: "accept" | "offer" | null = null;
   let acted: "accepted" | "offered" | null = null; // set on success, before the audit poll catches up
+  let invoice: InvoiceView | null = null; // the POST answer, before the audit poll catches up
+  let invoiceError: string | null = null;
+  let invoiceBusy: string | null = null; // the dispute id being recorded, so a switch of case can't unlock another one
+
+  /** Recorded (from this session or the audit trail on open): the banner. Otherwise the line, the action and any error. */
+  function renderInvoice(): string {
+    const row = audit.find((a) => a.action === "invoice_recorded"); // the first record wins, like the server
+    const view = invoice ?? (row ? invoiceFromAudit(row.detail) : null);
+    if (view) return renderInvoiceBanner(view);
+    const busy = invoiceBusy !== null && invoiceBusy === current?.id;
+    const label = busy ? `<span class="spinner" aria-hidden="true"></span>Recording…` : "Record as PayPal invoice";
+    const err = invoiceError
+      ? `<div class="banner banner-bad" tabindex="-1"><strong>Invoice not recorded</strong><span>${esc(invoiceError)}</span></div>`
+      : "";
+    return `<div class="invoice-card"><p class="invoice-line">${INVOICE_LINE}</p>
+      <button id="invoice-btn" class="btn" type="button"${busy ? ' disabled aria-busy="true"' : ""}>${label}</button></div>${err}`;
+  }
+
+  function paintInvoice(): void {
+    const box = document.getElementById("invoice-box");
+    if (box) box.innerHTML = renderInvoice();
+  }
+
+  async function recordInvoice(): Promise<void> {
+    if (!current || invoiceBusy) return;
+    const d = current;
+    invoiceBusy = d.id;
+    invoiceError = null;
+    paintInvoice();
+    let ok = false;
+    try {
+      const r = await api<InvoiceResult>(`/api/disputes/${encodeURIComponent(d.id)}/paypal-invoice`, "POST");
+      ok = true;
+      if (current?.id === d.id) {
+        invoice = invoiceFromResult(r);
+        // the new factor and score; if this read fails the old score stays and the banner still says what changed
+        const s = await api<Score>(`/api/disputes/${encodeURIComponent(d.id)}/score`).catch(() => null);
+        if (s && current?.id === d.id) score = s;
+      }
+    } catch (e) {
+      if (current?.id === d.id) invoiceError = errorText(e, "invoice");
+    } finally {
+      if (invoiceBusy === d.id) invoiceBusy = null;
+      if (current?.id === d.id) {
+        paintBody();
+        paintHeader(); // the score can cross the fight line, which moves the dark pill
+        document.querySelector<HTMLElement>("#invoice-box .banner")?.focus();
+        void refreshAudit();
+      }
+    }
+    if (ok) opts.onSubmitted(); // the grid row's win probability
+  }
 
   function paintHeader(): void {
     if (!current) return;
@@ -385,6 +503,7 @@ export function createDetail(opts: { onClose: (id: string) => void; onSubmitted:
     body.innerHTML = `
       <section aria-labelledby="h-score"><h3 id="h-score">Win probability</h3>${renderScore(score)}</section>
       <section aria-labelledby="h-evidence"><h3 id="h-evidence">Extracted evidence</h3>${renderEvidence(score)}${docLine ? line : ""}</section>
+      <section aria-labelledby="h-invoice"><h3 id="h-invoice">PayPal invoice</h3><div id="invoice-box" aria-live="polite">${renderInvoice()}</div></section>
       <section aria-labelledby="h-dossier"><h3 id="h-dossier">Dossier preview</h3>${renderDossier(score, docLine ? "" : line)}</section>
       <section aria-labelledby="h-audit"><h3 id="h-audit">Audit trail</h3><div id="audit-list">${renderAudit(audit)}</div></section>`;
   }
@@ -414,10 +533,13 @@ export function createDetail(opts: { onClose: (id: string) => void; onSubmitted:
     try {
       const a = await api<AuditRow[]>(`/api/disputes/${encodeURIComponent(id)}/audit`);
       if (current?.id !== id || JSON.stringify(a) === auditJson) return;
+      const recorded = (rows: AuditRow[]) => rows.some((r) => r.action === "invoice_recorded");
+      const newRecord = !recorded(audit) && recorded(a);
       audit = a;
       auditJson = JSON.stringify(a);
       const list = document.getElementById("audit-list");
       if (list) list.innerHTML = renderAudit(a);
+      if (newRecord && !invoice && !invoiceBusy) paintInvoice(); // recorded from elsewhere (another tab, the API)
       paintHeader();
     } catch {
       /* the next poll tries again */
@@ -452,6 +574,10 @@ export function createDetail(opts: { onClose: (id: string) => void; onSubmitted:
   }
 
   button.addEventListener("click", () => void submit());
+  // the invoice button is redrawn with the body, so listen on the body
+  body.addEventListener("click", (ev) => {
+    if ((ev.target as Element).closest("#invoice-btn")) void recordInvoice();
+  });
   offerBtn.addEventListener("click", openOffer);
   acceptBtn.addEventListener("click", openConfirm);
   el("offer-cancel").addEventListener("click", () => {
@@ -500,6 +626,8 @@ export function createDetail(opts: { onClose: (id: string) => void; onSubmitted:
       auditJson = "";
       sending = false;
       acted = null;
+      invoice = null;
+      invoiceError = null;
       closeSteps();
       result.innerHTML = "";
       delete result.dataset.shown;

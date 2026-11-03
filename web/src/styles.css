@@ -1166,6 +1166,44 @@ kbd {
   transform: translateY(-1px);
 }
 
+/* record the order as a PayPal invoice: an inset card with one muted line and a secondary pill */
+.invoice-card {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px 16px;
+  margin-bottom: 10px;
+  padding: 14px 16px;
+  border-radius: 14px;
+  background: var(--inset);
+}
+
+.invoice-line {
+  flex: 1 1 260px;
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--muted);
+}
+
+.invoice-card .btn {
+  flex: none;
+  white-space: nowrap;
+}
+
+#invoice-box .banner {
+  gap: 3px;
+}
+
+#invoice-box .banner span {
+  overflow-wrap: anywhere; /* long PayPal ids and debug ids break instead of pushing the panel sideways */
+}
+
+.mono {
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  font-size: 13px;
+}
+
 .facts {
   display: grid;
   grid-template-columns: 130px 1fr;
@@ -1498,6 +1536,13 @@ kbd {
     inset: 0;
     width: 100vw;
     border-radius: 0;
+  }
+
+  /* the invoice action goes full width under its line: a big thumb target */
+  .invoice-card .btn {
+    flex: 1 1 100%;
+    padding: 12px 16px;
+    font-size: 15px;
   }
 
   .toast {

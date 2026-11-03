@@ -173,7 +173,7 @@ def list_disputes() -> list[dict[str, Any]]:
     return rows
 
 
-CLOSED_STATUSES = {"RESOLVED", "WAITING_FOR_BUYER_RESPONSE", "UNDER_REVIEW"}  # accepted, offer out, evidence sent
+CLOSED_STATUSES = store.CLOSED_STATUSES
 
 
 def _due(value: str | None) -> datetime | None:

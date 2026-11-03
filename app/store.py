@@ -242,13 +242,17 @@ def set_autopilot(enabled: bool, threshold: int) -> None:
         )
 
 
+CLOSED_STATUSES = {"RESOLVED", "WAITING_FOR_BUYER_RESPONSE", "UNDER_REVIEW"}  # accepted, offer out, evidence sent
+
+
 def review_reasons() -> dict[str, list[str]]:
     """Per dispute, the reasons of its latest autopilot flag, unless it was submitted after."""
     out: dict[str, list[str]] = {}
     with closing(_connect()) as conn:
         for r in conn.execute(
             "SELECT dispute_id, action, detail FROM audit "
-            "WHERE action IN ('autopilot_flagged', 'autopilot_submitted', 'submitted', 'accepted', 'offered') ORDER BY id"
+            "WHERE action IN ('autopilot_flagged', 'autopilot_awaiting', 'autopilot_submitted', 'submitted', 'accepted', 'offered') "
+            "ORDER BY id"
         ):
             if r["action"] == "autopilot_flagged":
                 out[r["dispute_id"]] = list(json.loads(r["detail"]).get("reasons", []))
@@ -289,7 +293,10 @@ def list_disputes() -> list[dict[str, Any]]:
     with closing(_connect()) as conn:
         rows = conn.execute(
             f"SELECT {SUMMARY_COLUMNS}, json_extract(resource, '$.buyer_billing_address') AS billing_address "
-            "FROM disputes ORDER BY update_time DESC, id"
+            "FROM disputes ORDER BY "
+            # open first, the same test as the console's needsAction: any other status (PayPal's OTHER) sorts as closed
+            "NOT (COALESCE(status, '') IN ('OPEN', 'WAITING_FOR_SELLER_RESPONSE') AND COALESCE(outcome, '') = ''), "
+            "(COALESCE(seller_response_due_date, '') = ''), seller_response_due_date, update_time DESC, id"
         ).fetchall()
     return [dict(r) for r in rows]
 

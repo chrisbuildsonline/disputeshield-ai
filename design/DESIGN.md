@@ -116,6 +116,17 @@ DOM. Success hides after 10s; errors stay until dismissed. A Dismiss button clos
   <status>, win chance N%, <time left>"; tap or Enter opens the full-screen panel, Close returns
   focus to the card. Loading and empty states become white cards of their own.
 
+- **Add evidence** (panel, "Extracted evidence" section): a secondary pill above the cards, accessible
+  name "Add evidence", that opens a hidden `input[type=file][accept="application/pdf"]`. The whole
+  evidence area is a drop zone (`data-drop`, inset 16px radius): while a file is dragged over it gets
+  `is-over` (indigo tint plus a 2px indigo-light ring); it clears on dragleave and drop. The empty state
+  reads "No documents uploaded yet. Drop a PDF here, or use Add evidence." Busy: the pill is disabled,
+  `aria-busy="true"`, shows the spinner and reads "Reading…". Done: cards, panel score, grid row and
+  phone card repaint with no reload; the audit trail gets "Document added: <name>". Errors are a
+  `.banner-bad` under the pill in plain words ("That file isn't a PDF." checked on the first bytes before
+  anything is sent, "That PDF is over the 10 MB limit.", "Could not reach the server."); the next
+  upload clears it. On a phone (<= 700px) the pill is full width and at least 44px tall. Evidence
+  badges: "AI · model · live", "AI · model · recorded", or "Text parser" (title: no model answered).
 - **Autopilot** (header): one floating white pill holding a switch (the real `role=switch` checkbox
   drawn as a 40x24 track, grey off, indigo on) and the threshold as a 999px pill input without spin
   arrows. A bad threshold gets `aria-invalid`, a red tint and a small red hint pill under it; it is

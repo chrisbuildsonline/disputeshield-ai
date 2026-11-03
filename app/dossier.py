@@ -19,7 +19,7 @@ from typing import Any, Literal
 
 from app import llm, recorded
 from app.extract import DEFAULT_MODEL, ExtractedEvidence
-from app.scoring import INR, Dispute, ScoreResult
+from app.scoring import INR, INVOICE_LABEL, Dispute, ScoreResult
 
 logger = logging.getLogger(__name__)
 
@@ -266,14 +266,16 @@ _PROMPT = (
 )
 
 
-def _facts(dispute: Dispute, evidence: list[ExtractedEvidence], result: ScoreResult) -> str:
+def _facts(
+    dispute: Dispute, evidence: list[ExtractedEvidence], result: ScoreResult, *, exclude: tuple[str, ...] = ()
+) -> str:
     return json.dumps(
         {
             "dispute_reason": dispute.reason,
             "dispute_amount": str(dispute.amount),
             "dispute_currency": dispute.currency,
             "evidence": [e.model_dump(exclude={"source", "model"}, exclude_none=True) for e in evidence],
-            "met_factors": [f.label for f in result.factors if f.met],
+            "met_factors": [f.label for f in result.factors if f.met and f.label not in exclude],
         },
         ensure_ascii=False,
     )
@@ -321,7 +323,8 @@ def _choose_note(
         except Exception as e:
             why.append(f"{name} note failed: {type(e).__name__}: {str(e)[:200]}")
         logger.warning("using recorded or template note: %s", why[-1])
-    entry = recorded.note(_facts(dispute, evs, result))  # same facts, same hash: a note the model wrote for this exact case
+    # same facts, same hash: a note the model wrote for this exact case (recorded before any invoice was on file)
+    entry = recorded.note(_facts(dispute, evs, result, exclude=(INVOICE_LABEL,)))
     if entry:
         text = _truncate(entry["note"])
         bad = fact_check(text, dispute, evs)

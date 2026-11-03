@@ -12,6 +12,7 @@ import {
   ApiError,
   esc,
   handleUnauthorized,
+  money,
   moneyParts,
   needsAction,
   reasonLabel,
@@ -71,6 +72,29 @@ function text(el: HTMLElement, value: string): void {
 }
 
 
+// one renderer per value, shared by the grid and the phone's case cards
+const amountHtml = (d: Dispute) => `<span class="amount">${moneyHtml(d.amount_value, d.currency)}</span>`;
+
+const statusHtml = (d: Dispute) =>
+  `<span class="pills">${badge(statusLabel(d.status), needsAction(d) ? "badge-red" : "badge-calm")}${
+    d.review_reasons ? badge("Needs review", "badge-amber") : ""
+  }</span>`;
+
+function winHtml(w: number | null | undefined): string {
+  if (w === null || w === undefined) return `<span class="muted" title="Upload a document to score this case">&mdash;</span>`;
+  const { band, tone } = winBand(w);
+  return `<span class="win" data-band="${band}">${badge(`${w}%`, `badge-${tone}`)}<span class="meter meter-${tone}" aria-hidden="true"><span style="width:${w}%"></span></span></span>`;
+}
+
+function dueHtml(d: Dispute): string {
+  if (!needsAction(d)) return `<span class="muted">${d.outcome ? "Closed" : "Answered"}</span>`;
+  const due = d.seller_response_due_date;
+  const t = timeLeft(due);
+  const when = due ? new Date(due).toLocaleString("en-GB", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }) : "";
+  const left = t.urgent ? badge(t.text, "badge-red") : `<span class="due-left">${esc(t.text)}</span>`;
+  return `<span class="two-line">${left}${when ? `<span class="sub">by ${esc(when)}</span>` : ""}</span>`;
+}
+
 const columns: ColDef<Dispute>[] = [
   { colId: "id", headerName: "Dispute", field: "id", minWidth: 190, flex: 1.4, cellClass: "cell-id" },
   {
@@ -78,7 +102,7 @@ const columns: ColDef<Dispute>[] = [
     headerName: "Amount",
     width: 140,
     valueGetter: (p) => (p.data ? Number(p.data.amount_value) : 0),
-    cellRenderer: (p: ICellRendererParams<Dispute>) => (p.data ? `<span class="amount">${moneyHtml(p.data.amount_value, p.data.currency)}</span>` : ""),
+    cellRenderer: (p: ICellRendererParams<Dispute>) => (p.data ? amountHtml(p.data) : ""),
     type: "rightAligned",
   },
   { colId: "reason", headerName: "Reason", minWidth: 170, flex: 1.2, valueGetter: (p) => reasonLabel(p.data?.reason ?? null) },
@@ -86,12 +110,9 @@ const columns: ColDef<Dispute>[] = [
     colId: "status",
     headerName: "Status",
     width: 272, // "Open" + "Needs review" side by side; a long PayPal status puts Needs review on a second line
-    cellRenderer: (p: ICellRendererParams<Dispute>) =>
-      p.data
-        ? `<span class="pills">${badge(statusLabel(p.data.status), needsAction(p.data) ? "badge-red" : "badge-calm")}${
-            p.data.review_reasons ? badge("Needs review", "badge-amber") : ""
-          }</span>`
-        : "",
+    // a value that holds everything the pills show: the grid redraws a cell only when its value changes
+    valueGetter: (p) => (p.data ? `${statusLabel(p.data.status)}${p.data.outcome ? ` (${p.data.outcome})` : ""}${p.data.review_reasons ? " · Needs review" : ""}` : ""),
+    cellRenderer: (p: ICellRendererParams<Dispute>) => (p.data ? statusHtml(p.data) : ""),
   },
   {
     colId: "source",
@@ -105,12 +126,7 @@ const columns: ColDef<Dispute>[] = [
     headerName: "Win %",
     width: 150,
     valueGetter: (p) => p.data?.win_probability ?? -1,
-    cellRenderer: (p: ICellRendererParams<Dispute>) => {
-      const w = p.data?.win_probability;
-      if (w === null || w === undefined) return `<span class="muted" title="Upload a document to score this case">&mdash;</span>`;
-      const { band, tone } = winBand(w);
-      return `<span class="win" data-band="${band}">${badge(`${w}%`, `badge-${tone}`)}<span class="meter meter-${tone}" aria-hidden="true"><span style="width:${w}%"></span></span></span>`;
-    },
+    cellRenderer: (p: ICellRendererParams<Dispute>) => winHtml(p.data?.win_probability),
   },
   {
     colId: "due",
@@ -118,17 +134,32 @@ const columns: ColDef<Dispute>[] = [
     minWidth: 170,
     flex: 1,
     valueGetter: (p) => (p.data?.seller_response_due_date ? Date.parse(p.data.seller_response_due_date) : 0),
-    cellRenderer: (p: ICellRendererParams<Dispute>) => {
-      if (!p.data) return "";
-      if (!needsAction(p.data)) return `<span class="muted">${p.data.outcome ? "Closed" : "Answered"}</span>`;
-      const due = p.data.seller_response_due_date;
-      const t = timeLeft(due);
-      const when = due ? new Date(due).toLocaleString("en-GB", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }) : "";
-      const left = t.urgent ? badge(t.text, "badge-red") : `<span class="due-left">${esc(t.text)}</span>`;
-      return `<span class="two-line">${left}${when ? `<span class="sub">by ${esc(when)}</span>` : ""}</span>`;
-    },
+    cellRenderer: (p: ICellRendererParams<Dispute>) => (p.data ? dueHtml(p.data) : ""),
   },
 ];
+
+// with the case panel open the grid sits to its left: drop what the panel already says until the rest fits,
+// so the status pills are never cut off under the panel. All columns come back when it closes.
+const DROP_FIRST = ["source", "reason", "amount", "due", "win"];
+let hiddenCols = "";
+
+function fitColumns(gridApi: GridApi<Dispute>): void {
+  const room = byId("grid").clientWidth - 16; // a vertical scrollbar's worth to spare
+  const need = (c: ColDef<Dispute>) => c.width ?? c.minWidth ?? 0;
+  let total = columns.reduce((n, c) => n + need(c), 0);
+  const hide: string[] = [];
+  if (detail.isOpen()) {
+    for (const id of DROP_FIRST) {
+      if (total <= room) break;
+      hide.push(id);
+      total -= need(columns.find((c) => c.colId === id)!);
+    }
+  }
+  if (hide.join() === hiddenCols) return;
+  hiddenCols = hide.join();
+  gridApi.setColumnsVisible(columns.map((c) => c.colId!).filter((id) => !hide.includes(id)), true);
+  gridApi.setColumnsVisible(hide, false);
+}
 
 let rows: Dispute[] = [];
 let lastJson = "";
@@ -138,6 +169,9 @@ const watching = new Set<string>(); // new cases whose autopilot run the console
 
 const detail = createDetail({
   onClose: (id) => {
+    fitColumns(gridApi);
+    const card = cardEls.get(id)?.firstElementChild as HTMLElement | null | undefined;
+    if (card?.offsetParent) return card.focus(); // a phone: back to the card that opened it
     const node = gridApi.getRowNode(id);
     if (node?.rowIndex != null) gridApi.setFocusedCell(node.rowIndex, "id");
   },
@@ -148,7 +182,61 @@ function open(d: Dispute | undefined): void {
   if (!d) return;
   gridApi.getRowNode(d.id)?.setSelected(true);
   detail.open(d);
+  fitColumns(gridApi);
 }
+
+// ---- a phone gets case cards instead of the grid (CSS shows one or the other); same rows, same order ----
+const cardsEl = byId<HTMLUListElement>("cards");
+const cardEls = new Map<string, HTMLLIElement>();
+
+function cardHtml(d: Dispute): string {
+  return `<span class="cc-head"><span class="cc-id">${esc(d.id)}</span><span class="cc-status">${statusHtml(d)}</span></span>
+    <span class="cc-amount">${amountHtml(d)}</span>
+    <span class="cc-reason">${esc(reasonLabel(d.reason))}</span>
+    <span class="cc-foot">
+      <span class="cc-win"><span class="cc-label">Win chance</span>${winHtml(d.win_probability)}</span>
+      <span class="cc-due"><span class="cc-label">Respond within</span>${dueHtml(d)}</span>
+    </span>`;
+}
+
+function cardName(d: Dispute): string {
+  const due = needsAction(d) ? timeLeft(d.seller_response_due_date).text : d.outcome ? "closed" : "answered";
+  const win = d.win_probability === null ? "not scored" : `win chance ${d.win_probability}%`;
+  return `Dispute ${d.id}, ${money(d.amount_value, d.currency)}, ${statusLabel(d.status)}${d.review_reasons ? ", needs review" : ""}, ${win}, ${due}`;
+}
+
+/** Keyed: a card is made once and only rewritten when its markup changes, so a focused card keeps its focus. */
+function paintCards(): void {
+  const keep = new Set(rows.map((d) => d.id));
+  for (const [id, li] of cardEls)
+    if (!keep.has(id)) {
+      li.remove();
+      cardEls.delete(id);
+    }
+  let at = cardsEl.firstElementChild;
+  for (const d of rows) {
+    let li = cardEls.get(d.id);
+    if (!li) {
+      li = document.createElement("li");
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.dataset.id = d.id;
+      li.append(btn);
+      cardEls.set(d.id, li);
+    }
+    const btn = li.firstElementChild as HTMLButtonElement;
+    put(btn, cardHtml(d));
+    btn.className = `case-card ${needsAction(d) ? "is-open" : "is-closed"}`;
+    if (btn.getAttribute("aria-label") !== cardName(d)) btn.setAttribute("aria-label", cardName(d));
+    if (li === at) at = at.nextElementSibling;
+    else cardsEl.insertBefore(li, at);
+  }
+}
+
+cardsEl.addEventListener("click", (e) => {
+  const card = (e.target as Element).closest<HTMLElement>(".case-card");
+  if (card) open(rows.find((r) => r.id === card.dataset.id));
+});
 
 const gridApi: GridApi<Dispute> = createGrid<Dispute>(byId("grid"), {
   theme: themeQuartz.withParams({
@@ -172,6 +260,13 @@ const gridApi: GridApi<Dispute> = createGrid<Dispute>(byId("grid"), {
   loading: false,
   suppressOverlays: ["noRows", "loading"], // the page draws its own empty state and loading overlay
   getRowId: (p) => p.data.id,
+  // AG Grid slides rows to their new place over 0.4 s while a new row shows at once in its slot: for that time two
+  // rows are drawn on top of each other (an insert at the top or a case moving down after it is answered)
+  animateRows: false,
+  // the same for columns: when the panel opens and columns are dropped, the rest slid left over several frames,
+  // drawn past the grid's right edge (Respond within cut to "RESPON") until they arrived
+  suppressColumnMoveAnimation: true,
+  onGridSizeChanged: (e) => fitColumns(e.api),
   rowSelection: { mode: "singleRow", checkboxes: false, enableClickSelection: true },
   rowClassRules: {
     "row-contested": (p) => !!p.data && needsAction(p.data),
@@ -281,6 +376,7 @@ async function refresh(): Promise<void> {
       gridApi.setGridOption("rowData", rows); // getRowId makes this a delta update: selection and scroll stay
       for (const d of rows) detail.update(d);
     }
+    paintCards(); // every poll, like the grid's due column: the countdown moves even when the data does not
     if (summary) paintKpis(summary);
     gridApi.refreshCells({ columns: ["due"], force: true }); // the countdown moves even when the data does not
     paintEmpty();
@@ -371,6 +467,10 @@ emptySeed.addEventListener("click", async () => {
 // ---- toast: one message at a time, in a live region that is always in the page ----
 const toastEl = byId("toast");
 let toastTimer = 0;
+// desktop: the toast sits on the canvas under the grid, and the grid gives up exactly that much height (styles.css)
+new ResizeObserver(() => {
+  document.querySelector<HTMLElement>(".stage")?.style.setProperty("--toast-room", toastEl.firstElementChild ? `${toastEl.offsetHeight + 16}px` : "0px");
+}).observe(toastEl);
 
 function toast(tone: "good" | "warn" | "bad", title: string, lines: string[], returnFocus: HTMLElement): void {
   window.clearTimeout(toastTimer);

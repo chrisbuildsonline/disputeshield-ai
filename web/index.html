@@ -42,6 +42,8 @@
     </section>
 
     <main class="stage">
+      <!-- the toast zone: under the grid on desktop, above the page title on a phone; never over a row or a card -->
+      <div id="toast" class="toast" role="status" aria-live="polite"></div>
       <div class="page-head">
         <h2 class="page-title">Disputes</h2>
         <p id="page-sub" class="muted">Open cases first, then by due date. Every one is scored and has its evidence ready.</p>
@@ -84,6 +86,7 @@
 
       <div class="grid-wrap">
         <div id="grid" role="region" aria-label="Disputes table"></div>
+        <ul id="cards" class="cards" aria-label="Disputes"></ul>
         <div id="grid-loading" class="grid-loading" role="status" aria-live="polite">
           <div class="skeleton" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></div>
           <p>Loading disputes&hellip;</p>
@@ -162,7 +165,6 @@
     </main>
 
     <footer class="foot"><span id="status" role="status">Checking API...</span></footer>
-    <div id="toast" class="toast" role="status" aria-live="polite"></div>
     <script type="module" src="./src/main.ts"></script>
   </body>
 </html>

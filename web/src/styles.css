@@ -567,17 +567,140 @@ kbd {
 .grid-wrap {
   flex: 1;
   position: relative;
-  min-height: 420px;
+  min-height: 320px; /* low enough that a toast under the grid never pushes a 900px-high page into scrolling */
   min-width: 0;
+  margin: 0 var(--panel-room, 0px) var(--toast-room, 0px) 0;
   background: #fff;
   border-radius: 18px;
   box-shadow: var(--shadow);
   overflow: hidden;
 }
 
+/* a wide screen with a case open: the grid stops 16px short of the panel instead of running under it */
+@media (min-width: 1100px) {
+  .stage:has(> .detail:not([hidden])) {
+    --panel-room: 580px; /* panel 580 + 12 from the edge + 16 gap - the stage's 28 padding */
+  }
+}
+
 #grid {
   position: absolute;
   inset: 0;
+}
+
+/* the phone's case cards: hidden on desktop, where the grid shows the same rows */
+.cards {
+  display: none;
+  flex-direction: column;
+  gap: 12px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.case-card {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  width: 100%;
+  padding: 16px 18px 14px;
+  border: 0;
+  border-radius: 18px;
+  background: #fff;
+  box-shadow: var(--shadow);
+  font: inherit;
+  color: var(--ink);
+  text-align: left;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.case-card:active {
+  background: #f7f8fb;
+}
+
+.cc-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px 10px;
+  margin-bottom: 6px;
+}
+
+.cc-id {
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+.cc-status .badge::before {
+  content: "";
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  margin-right: 6px;
+  border-radius: 50%;
+  background: currentColor;
+  vertical-align: 1px;
+}
+
+.cc-amount {
+  font-size: 30px;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  line-height: 1.15;
+  font-variant-numeric: tabular-nums;
+}
+
+.cc-amount .amount {
+  font-weight: 800;
+}
+
+.cc-amount .minor {
+  font-size: 0.66em;
+  font-weight: 600;
+}
+
+.cc-reason {
+  font-size: 14px;
+  color: var(--muted);
+}
+
+.cc-foot {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid #eef0f4;
+}
+
+.cc-foot > span {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+  min-width: 0;
+}
+
+.cc-label {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+}
+
+.cc-win .badge {
+  font-size: 13px;
+}
+
+/* answered and closed cases step back, like their grid rows */
+.case-card.is-closed .amount,
+.case-card.is-closed .cc-amount .minor {
+  color: var(--muted);
 }
 
 /* grid cells: dense, scannable, secondary text muted */
@@ -1074,10 +1197,11 @@ kbd {
   margin-bottom: 2px;
 }
 
-/* toast */
+/* toast zone: on desktop the toast floats on the canvas under the grid, which gives up that height while it shows
+   (--toast-room, set from the toast's own height), so it never sits over a row */
 .toast {
-  position: fixed;
-  right: 20px;
+  position: absolute;
+  right: calc(28px + var(--panel-room, 0px));
   bottom: 20px;
   z-index: 20;
   width: min(420px, calc(100vw - 24px));
@@ -1581,8 +1705,39 @@ kbd {
     font-size: 15px;
   }
 
+  /* the toast zone on a phone: in the page flow above the title, right under the button that made it;
+     it pushes the page down instead of covering a card. Empty, it takes no room (cancels the stage gap). */
   .toast {
-    right: 12px;
-    bottom: 12px;
+    position: static;
+    width: auto;
+  }
+
+  .toast:empty {
+    margin-bottom: -12px;
+  }
+
+  /* one job per screen: the cases as a list of white cards on the canvas, not a squeezed 7-column grid */
+  .grid-wrap {
+    min-height: 0;
+    margin: 0;
+    background: transparent;
+    border-radius: 0;
+    box-shadow: none;
+    overflow: visible;
+  }
+
+  #grid {
+    display: none;
+  }
+
+  .cards {
+    display: flex;
+  }
+
+  .grid-loading,
+  .empty {
+    position: static;
+    border-radius: 18px;
+    box-shadow: var(--shadow);
   }
 }

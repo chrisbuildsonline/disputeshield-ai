@@ -87,6 +87,8 @@ function auditText(a: AuditRow): string {
       return "Autopilot submitted the evidence";
     case "autopilot_flagged":
       return `Autopilot flagged for review: ${Array.isArray(d.reasons) ? d.reasons.map(String).join("; ") : ""}`;
+    case "autopilot_awaiting":
+      return `Auto-check: scored ${String(d.probability)}%, waiting for your review`;
     case "autopilot_skipped":
       return "Autopilot skipped (closed or already submitted)";
     case "invoice_recorded": {
@@ -127,12 +129,18 @@ function recordedLine(score: Score): string {
   return `<p class="recorded-line">Recorded from ${runs} on ${what}. ${START_OLLAMA}</p>`;
 }
 
-function renderEvidence(score: Score): string {
+/** A fact as read from the receipt; the order amount is money in the case's currency, like every other amount. */
+function factText(e: Evidence, k: keyof Evidence, currency: string | null): string {
+  const v = String(e[k]);
+  return k === "amount" ? money(v, currency) || v : v;
+}
+
+function renderEvidence(score: Score, currency: string | null): string {
   if (!score.documents.length) return `<p class="muted">No documents uploaded yet.</p>`;
   return score.documents
     .map((doc) => {
       const e = doc.evidence;
-      const rows = FIELDS.filter(([k]) => e[k]).map(([k, label]) => `<dt>${label}</dt><dd>${esc(e[k])}</dd>`);
+      const rows = FIELDS.filter(([k]) => e[k]).map(([k, label]) => `<dt>${label}</dt><dd>${esc(factText(e, k, currency))}</dd>`);
       for (const m of e.customer_messages) rows.push(`<dt>Customer message</dt><dd>${esc(m)}</dd>`);
       return `<div class="card"><div class="card-head"><strong>${esc(doc.name)}</strong>
         <span class="by"><span class="muted">Read by</span> ${sourceBadge(e.source, e.model)}</span></div>
@@ -235,6 +243,23 @@ function renderInvoiceBanner(v: InvoiceView): string {
   if (v.already) lines.push("Recorded earlier: nothing new was created.");
   const title = v.demo ? DEMO_LABEL : "Recorded on PayPal sandbox";
   return `<div class="banner banner-${v.demo ? "info" : "good"}" tabindex="-1"><strong>${esc(title)}</strong>${lines.map((l) => `<span>${l}</span>`).join("")}</div>`;
+}
+
+/** Half the disputed amount, to the cent: where a partial refund offer starts. */
+function half(value: string): string {
+  const cents = Math.round(Number(value) * 100);
+  return Number.isFinite(cents) ? (Math.round(cents / 2) / 100).toFixed(2) : value;
+}
+
+/** Why an offer amount can't be sent, or null when it can: the server's rules, checked before any request. */
+function offerProblem(raw: string, badInput: boolean, max: string | null, currency: string | null): string | null {
+  const v = raw.trim();
+  if (badInput || !/^-?(\d+\.?\d*|\.\d+)$/.test(v)) return "Enter the refund amount as a number, like 25.00.";
+  if (Number(v) <= 0) return "The refund has to be more than 0.";
+  if (/\.\d{3,}$/.test(v)) return "Use at most two decimals.";
+  if (!/^\d+(\.\d{1,2})?$/.test(v)) return "Enter the refund amount as a number, like 25.00."; // the server's own rule: ".5" and "5." are refused
+  if (max !== null && Number(v) > Number(max)) return `The refund can't be more than ${money(max, currency)}, the disputed amount.`;
+  return null;
 }
 
 export type Act = "submit" | "accept" | "offer" | "sync" | "invoice";
@@ -413,9 +438,25 @@ export function createDetail(opts: { onClose: (id: string) => void; onSubmitted:
   }
 
   function closeSteps(): void {
+    showOfferProblem(null);
     offerForm.hidden = true;
     confirmBox.hidden = true;
     settleActions.hidden = false;
+  }
+
+  /** Marks the amount box invalid with the reason under it, or clears both. */
+  function showOfferProblem(problem: string | null): void {
+    const msg = el("offer-error");
+    msg.textContent = problem ?? "";
+    msg.hidden = !problem;
+    if (problem) offerAmount.setAttribute("aria-invalid", "true");
+    else offerAmount.removeAttribute("aria-invalid");
+  }
+
+  function checkOffer(): boolean {
+    const problem = offerProblem(offerAmount.value, offerAmount.validity.badInput, current?.amount_value ?? null, current?.currency ?? null);
+    showOfferProblem(problem);
+    return !problem;
   }
 
   function openOffer(): void {
@@ -426,7 +467,8 @@ export function createDetail(opts: { onClose: (id: string) => void; onSubmitted:
     settleActions.hidden = true;
     offerForm.hidden = false;
     el("offer-currency").textContent = d.currency ?? "USD";
-    offerAmount.value = max;
+    // a partial refund is the advice in the middle band, so the form starts at half; otherwise at the full amount
+    offerAmount.value = max && score?.recommendation.action === "offer_refund" ? half(max) : max;
     if (max) offerAmount.max = max;
     else offerAmount.removeAttribute("max");
     el("offer-max").textContent = max ? `Up to ${money(max, d.currency)}, the disputed amount` : "";
@@ -502,7 +544,7 @@ export function createDetail(opts: { onClose: (id: string) => void; onSubmitted:
     const docLine = score.documents.some((d) => d.evidence.source === "recorded");
     body.innerHTML = `
       <section aria-labelledby="h-score"><h3 id="h-score">Win probability</h3>${renderScore(score)}</section>
-      <section aria-labelledby="h-evidence"><h3 id="h-evidence">Extracted evidence</h3>${renderEvidence(score)}${docLine ? line : ""}</section>
+      <section aria-labelledby="h-evidence"><h3 id="h-evidence">Extracted evidence</h3>${renderEvidence(score, current?.currency ?? null)}${docLine ? line : ""}</section>
       <section aria-labelledby="h-invoice"><h3 id="h-invoice">PayPal invoice</h3><div id="invoice-box" aria-live="polite">${renderInvoice()}</div></section>
       <section aria-labelledby="h-dossier"><h3 id="h-dossier">Dossier preview</h3>${renderDossier(score, docLine ? "" : line)}</section>
       <section aria-labelledby="h-audit"><h3 id="h-audit">Audit trail</h3><div id="audit-list">${renderAudit(audit)}</div></section>`;
@@ -591,7 +633,15 @@ export function createDetail(opts: { onClose: (id: string) => void; onSubmitted:
   acceptYes.addEventListener("click", () => void act("accept", {}));
   offerForm.addEventListener("submit", (ev) => {
     ev.preventDefault();
+    if (!checkOffer()) {
+      offerAmount.focus();
+      return; // a bad amount never leaves the browser
+    }
     void act("offer", { amount: offerAmount.value.trim(), note: offerNote.value });
+  });
+  // once marked, the mark follows the typing, so a fixed value clears it at once
+  offerAmount.addEventListener("input", () => {
+    if (offerAmount.hasAttribute("aria-invalid")) checkOffer();
   });
   el("detail-close").addEventListener("click", () => close());
   // on the document, not the panel: focus can be outside it (a button that went disabled, the toast, the page)

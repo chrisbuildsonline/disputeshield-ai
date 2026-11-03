@@ -12,7 +12,7 @@ import {
   ApiError,
   esc,
   handleUnauthorized,
-  money,
+  moneyParts,
   needsAction,
   reasonLabel,
   setToken,
@@ -51,18 +51,23 @@ handleUnauthorized(() => {
 
 const badge = (text: string, cls: string) => `<span class="badge ${cls}">${esc(text)}</span>`;
 
-/** "NOK 1,299.00" with the code and the cents muted, the way bank tables print money. Text stays the same. */
+/** "NOK 1,299.00" with the code and the cents muted, the way bank tables print money. Text stays the same as money(). */
 function moneyHtml(value: string | null, currency: string | null): string {
-  const n = Number(value);
-  if (value === null || Number.isNaN(n)) return "";
-  try {
-    const parts = new Intl.NumberFormat("en-US", { style: "currency", currency: currency ?? "USD" }).formatToParts(n);
-    return parts
-      .map((p) => (p.type === "decimal" || p.type === "fraction" || (p.type === "currency" && p.value.length > 1) ? `<span class="minor">${esc(p.value)}</span>` : esc(p.value)))
-      .join("");
-  } catch {
-    return esc(money(value, currency));
-  }
+  return (moneyParts(value, currency) ?? [])
+    .map((p) => (p.type === "decimal" || p.type === "fraction" || (p.type === "currency" && p.value.length > 1) ? `<span class="minor">${esc(p.value)}</span>` : esc(p.value)))
+    .join("");
+}
+
+/** Writes only when the markup changed, so a focused control inside keeps its focus and screen readers stay quiet. */
+const written = new WeakMap<HTMLElement, string>();
+function put(el: HTMLElement, html: string): void {
+  if (written.get(el) === html) return;
+  written.set(el, html);
+  el.innerHTML = html;
+}
+
+function text(el: HTMLElement, value: string): void {
+  if (el.textContent !== value) el.textContent = value;
 }
 
 
@@ -206,65 +211,59 @@ async function whileBusy<T>(work: () => Promise<T>): Promise<T> {
   }
 }
 
-// ---- KPI strip: totals over the open cases, from /api/summary ----
-const DASH = "&mdash;";
+// ---- KPI strip: totals over the open cases, from /api/summary. The tiles are in the page; a poll only changes what moved ----
+const DASH = "—";
 
 function dueText(hours: number): string {
   if (hours <= 0) return "Overdue";
   return hours < 48 ? `Due in ${Math.floor(hours)} h` : `Due in ${Math.floor(hours / 24)} d`;
 }
 
+const kpiLink = byId<HTMLButtonElement>("kpi-link");
+
 function paintKpis(s: Summary): void {
-  byId("kpi-open").textContent = String(s.open_count);
-  byId("kpi-open-foot").textContent = s.open_count ? "waiting on your reply" : "nothing waiting on you";
+  text(byId("kpi-open"), String(s.open_count));
+  text(byId("kpi-open-foot"), s.open_count ? "waiting on your reply" : "nothing waiting on you");
   const soon = rows.filter((d) => needsAction(d) && timeLeft(d.seller_response_due_date).urgent).length;
-  byId("kpi-soon").innerHTML = soon ? badge(`${soon} due in 48 h`, "badge-red") : "";
+  put(byId("kpi-soon"), soon ? badge(`${soon} due in 48 h`, "badge-red") : "");
 
   const risk = byId("kpi-risk");
   risk.hidden = s.at_risk.length === 0;
   byId("kpi-risk-none").hidden = s.at_risk.length > 0;
   risk.classList.toggle("kpi-money-many", s.at_risk.length > 2);
-  risk.innerHTML = s.at_risk.map((m) => `<li>${moneyHtml(m.value, m.currency)}</li>`).join("");
-  byId("kpi-risk-foot").textContent = s.at_risk.length
-    ? `in ${s.at_risk.length} ${s.at_risk.length === 1 ? "currency" : "currencies"}, open cases only`
-    : "nothing at stake";
+  put(risk, s.at_risk.map((m) => `<li>${moneyHtml(m.value, m.currency)}</li>`).join(""));
+  text(
+    byId("kpi-risk-foot"),
+    s.at_risk.length ? `in ${s.at_risk.length} ${s.at_risk.length === 1 ? "currency" : "currencies"}, open cases only` : "nothing at stake",
+  );
 
-  const win = byId("kpi-win");
   const bar = byId("kpi-win-bar");
-  if (s.avg_win === null) {
-    win.innerHTML = DASH;
-    bar.style.width = "0";
-  } else {
-    win.textContent = `${s.avg_win}%`;
-    const { band, tone } = winBand(s.avg_win);
-    bar.style.width = `${s.avg_win}%`;
-    bar.className = `tone-${tone}`;
-    bar.dataset.band = band;
-  }
+  const win = s.avg_win === null ? null : winBand(s.avg_win);
+  text(byId("kpi-win"), s.avg_win === null ? DASH : `${s.avg_win}%`);
+  bar.style.width = `${s.avg_win ?? 0}%`;
+  bar.className = win ? `tone-${win.tone}` : "";
+  if (win) bar.dataset.band = win.band;
+  else delete bar.dataset.band;
 
-  const pill = byId("kpi-due-pill");
-  const body = byId("kpi-deadline");
   const next = s.next_deadline;
+  byId("kpi-deadline-none").hidden = !!next;
+  kpiLink.hidden = !next;
   if (!next) {
-    pill.innerHTML = "";
-    body.innerHTML = `<p class="kpi-value">${DASH}</p><p class="kpi-foot">no replies due</p>`;
+    put(byId("kpi-due-pill"), "");
     return;
   }
   // from the due date itself, so the pill and the row's countdown agree to the hour
   const hours = Number.isNaN(Date.parse(next.due)) ? next.hours_left : (Date.parse(next.due) - Date.now()) / 3600000;
   const tone = hours < 48 ? "badge-red" : hours < 96 ? "badge-amber" : "badge-muted";
-  pill.innerHTML = badge(dueText(hours), tone);
+  put(byId("kpi-due-pill"), badge(dueText(hours), tone));
   const d = rows.find((r) => r.id === next.dispute_id);
-  body.innerHTML = `<button class="kpi-link" type="button" data-id="${esc(next.dispute_id)}">
-      <span class="kpi-amount">${d ? moneyHtml(d.amount_value, d.currency) : esc(next.dispute_id)}</span>
-      <span class="kpi-foot">${d ? `${esc(reasonLabel(d.reason))} &middot; ` : ""}<span class="kpi-id">${esc(next.dispute_id)}</span></span>
-    </button>`;
+  if (kpiLink.dataset.id !== next.dispute_id) kpiLink.dataset.id = next.dispute_id;
+  put(byId("kpi-link-amount"), d ? moneyHtml(d.amount_value, d.currency) : esc(next.dispute_id));
+  text(byId("kpi-link-reason"), d ? `${reasonLabel(d.reason)} · ` : "");
+  text(byId("kpi-link-id"), next.dispute_id);
 }
 
-byId("kpi-deadline").addEventListener("click", (e) => {
-  const id = (e.target as HTMLElement).closest<HTMLElement>(".kpi-link")?.dataset.id;
-  if (id) open(rows.find((r) => r.id === id));
-});
+kpiLink.addEventListener("click", () => open(rows.find((r) => r.id === kpiLink.dataset.id)));
 
 async function refresh(): Promise<void> {
   if (gateOpen()) return; // wait for a token instead of polling a closed door
@@ -302,7 +301,8 @@ function focusRow(id: string): void {
 }
 
 /** The autopilot runs after the chargeback is answered: once its row moves (flagged or sent), say what it did. */
-const AUTOPILOT_DONE = new Set(["autopilot_submitted", "autopilot_flagged", "autopilot_skipped"]);
+// awaiting (autopilot off, nothing wrong) is done too, with no toast: a person sends it
+const AUTOPILOT_DONE = new Set(["autopilot_submitted", "autopilot_flagged", "autopilot_skipped", "autopilot_awaiting"]);
 
 async function reportAutopilot(d: Dispute): Promise<void> {
   if (!d.review_reasons && needsAction(d)) return; // still running, or not started: the next poll looks again

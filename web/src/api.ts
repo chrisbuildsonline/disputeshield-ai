@@ -178,14 +178,22 @@ export function esc(value: unknown): string {
   return String(value ?? "").replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
 }
 
-export function money(value: string | null, currency: string | null): string {
+/**
+ * The one money formatter: en-US in the dispute's own currency ("€128.00", "NOK 1,299.00"), as parts so
+ * the grid and the KPI strip can mute the code and the cents. Null for a value that is not a number.
+ */
+export function moneyParts(value: string | null, currency: string | null): Intl.NumberFormatPart[] | null {
   const n = Number(value);
-  if (value === null || Number.isNaN(n)) return "";
+  if (value === null || value.trim() === "" || !Number.isFinite(n)) return null;
   try {
-    return new Intl.NumberFormat("en-US", { style: "currency", currency: currency ?? "USD" }).format(n);
+    return new Intl.NumberFormat("en-US", { style: "currency", currency: currency ?? "USD" }).formatToParts(n);
   } catch {
-    return `${value} ${currency ?? ""}`.trim();
+    return [{ type: "literal", value: `${value} ${currency ?? ""}`.trim() }]; // a code Intl does not know
   }
+}
+
+export function money(value: string | null, currency: string | null): string {
+  return (moneyParts(value, currency) ?? []).map((p) => p.value).join("");
 }
 
 const REASONS: Record<string, string> = {

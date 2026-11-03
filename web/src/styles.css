@@ -531,6 +531,11 @@ kbd {
   cursor: pointer;
 }
 
+.kpi-link[hidden],
+#kpi-deadline-none[hidden] {
+  display: none;
+}
+
 .kpi-link:hover {
   background: var(--inset);
 }
@@ -857,9 +862,15 @@ kbd {
   font-size: 14px;
 }
 
-.detail-body {
+/* the flag and the body scroll together: the flag never sits over a card */
+.detail-scroll {
+  position: relative; /* holds its absolute children (the .sr-only spans): they can't grow the sheet, which then scrolls on focus */
   flex: 1;
+  min-height: 0;
   overflow-y: auto;
+}
+
+.detail-body {
   padding: 6px 22px 22px;
 }
 
@@ -1012,6 +1023,31 @@ kbd {
 
 .money-input input:focus-visible {
   outline: none;
+}
+
+/* a bad amount: the same quiet red tint as the threshold pill, never the browser's own outline */
+.money-input:has(input[aria-invalid="true"]) {
+  border-color: #fca5a5;
+  background: var(--red-bg);
+}
+
+.money-input input[aria-invalid="true"] {
+  color: var(--red);
+}
+
+.field-error {
+  align-self: flex-start;
+  margin: 0;
+  padding: 3px 10px;
+  border-radius: 999px;
+  background: #fee2e2; /* the red status tint, like the threshold hint */
+  color: var(--red);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.field-error[hidden] {
+  display: none;
 }
 
 .field textarea {

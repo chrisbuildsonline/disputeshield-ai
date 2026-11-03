@@ -44,7 +44,7 @@
     <main class="stage">
       <div class="page-head">
         <h2 class="page-title">Disputes</h2>
-        <p id="page-sub" class="muted">Open cases first. Every one is scored and has its evidence ready.</p>
+        <p id="page-sub" class="muted">Open cases first, then by due date. Every one is scored and has its evidence ready.</p>
       </div>
 
       <section id="kpis" class="kpis" aria-label="Summary">
@@ -72,7 +72,13 @@
             <p class="kpi-label">Next deadline</p>
             <span id="kpi-due-pill"></span>
           </div>
-          <div id="kpi-deadline"><p class="kpi-value">&mdash;</p></div>
+          <div id="kpi-deadline">
+            <div id="kpi-deadline-none"><p class="kpi-value">&mdash;</p><p class="kpi-foot">no replies due</p></div>
+            <button id="kpi-link" class="kpi-link" type="button" hidden>
+              <span id="kpi-link-amount" class="kpi-amount"></span>
+              <span class="kpi-foot"><span id="kpi-link-reason"></span><span id="kpi-link-id" class="kpi-id"></span></span>
+            </button>
+          </div>
         </article>
       </section>
 
@@ -111,8 +117,11 @@
           </div>
           <button id="detail-close" class="btn" type="button">Close <kbd>Esc</kbd></button>
         </div>
-        <div id="detail-flag"></div>
-        <div id="detail-body" class="detail-body"></div>
+        <!-- the flag scrolls with the content, so nothing ever slides under it -->
+        <div class="detail-scroll">
+          <div id="detail-flag"></div>
+          <div id="detail-body" class="detail-body"></div>
+        </div>
         <div class="detail-foot">
           <div id="submit-result" role="status" aria-live="polite"></div>
           <div id="settle" class="settle" hidden>
@@ -121,8 +130,9 @@
                 <label for="offer-amount">Refund amount</label>
                 <div class="money-input">
                   <span id="offer-currency" class="currency">USD</span>
-                  <input id="offer-amount" type="number" inputmode="decimal" step="0.01" min="0.01" aria-describedby="offer-max" />
+                  <input id="offer-amount" type="number" inputmode="decimal" step="0.01" min="0.01" aria-describedby="offer-max offer-error" />
                 </div>
+                <p id="offer-error" class="field-error" role="alert" hidden></p>
                 <p id="offer-max" class="hint muted"></p>
               </div>
               <div class="field">

@@ -35,7 +35,7 @@ The first three controls are in the page header, the last one is on the empty ta
 - **Autopilot** is a switch, with a **Threshold** field next to it (default 85). See [Autopilot](#autopilot).
 - **Load sample disputes** adds five made-up cases in four currencies, scored from 25% to 100%. They load at once, with no model call: their receipts are the sample PDFs, and the console shows the reads that a real qwen3:8b run recorded on those exact files (`samples/recorded.json`), so the evidence cards say "Recorded" with the model name. See [Recorded reads](#recorded-reads).
 
-Click a row to open it. With autopilot off, the panel says "Needs review: Waiting for you to review: autopilot is off". Click "Submit evidence". In demo mode nothing leaves your machine, and the panel says "Demo mode: nothing was sent to PayPal". The audit trail lists each step. In the screenshot below, the model wrote the rebuttal note and it passed the fact check, so its badge says "AI · qwen3:8b". A note that fails the check is replaced by the fixed template, and the badge says "Template".
+Click a row to open it. With autopilot off, the audit trail says "Auto-check: scored 100%, waiting for your review" and the case is not flagged. Click "Submit evidence". In demo mode nothing leaves your machine, and the panel says "Demo mode: nothing was sent to PayPal". The audit trail lists each step. In the screenshot below, the model wrote the rebuttal note and it passed the fact check, so its badge says "AI · qwen3:8b". A note that fails the check is replaced by the fixed template, and the badge says "Template".
 
 ![Evidence submitted in demo mode: the model's rebuttal note, the audit trail and the "nothing was sent to PayPal" banner](docs/screenshots/submitted.png)
 
@@ -199,10 +199,10 @@ Autopilot is off by default. Turn it on with the switch in the page header, and 
 It runs when a new dispute webhook arrives and when you add a document to a dispute. For each dispute it reads the evidence on file and scores it. Then:
 
 - At or above the threshold, it submits the evidence, exactly as the submit button would.
-- Below the threshold, or with no documents, or on an error, it does not submit. It flags the dispute "Needs review" and lists the reasons, including the score factors that were not met.
+- Below the threshold, or with no documents, or on an error, it does not submit (autopilot on or off). It flags the dispute "Needs review" and lists the reasons, including the score factors that were not met.
 - Closed disputes and disputes that were already submitted are skipped.
 
-Each step is written to the audit log. The demo chargeback always runs the agent once, so with autopilot off you see the "Waiting for you to review: autopilot is off" flag. With it on, the next "Simulate chargeback" is read, scored 100% and submitted with no click, and the console says so in a toast.
+Each step is written to the audit log. The demo chargeback always runs the agent once, so with autopilot off a well-scored case gets an "autopilot_awaiting" audit row ("scored 100%, waiting for your review") and no "Needs review" flag. With it on, the next "Simulate chargeback" is read, scored 100% and submitted with no click, and the console says so in a toast.
 
 ![Autopilot on: the new chargeback was submitted by itself and the toast reports a 100% win probability](docs/screenshots/autopilot.png)
 

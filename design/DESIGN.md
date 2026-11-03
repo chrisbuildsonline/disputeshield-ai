@@ -80,13 +80,16 @@ stay until dismissed. A Dismiss button closes it.
   body. Never an empty grid, never the empty state before the first answer.
 - **Detail panel**: a white sheet floating 12px in from the right edge on desktop (18px radius,
   580px wide); full screen, no radius, on mobile. Head: dispute id, reason/amount/status, Close.
-  Body sections: Win probability (big number, bar, recommendation pill + reason, factors),
+  A Needs review banner sits at the top of the scrolling body and scrolls away with it (never pinned
+  over the cards). Body sections: Win probability (big number, bar, recommendation pill + reason, factors),
   Extracted evidence, Dossier preview, Audit trail. Sticky foot: result banner (live region),
   then the actions.
 - **Panel foot actions**: score >= 60 (Fight): Submit evidence is the dark pill. Score < 60:
   Offer refund and Accept claim sit side by side; the recommended one is the dark pill and Submit
   evidence drops to a quiet text button under them (still a real button, to fight anyway). Offer refund opens an inline form (amount with currency, max = the
-  disputed amount, defaulting to it; note to the buyer). Accept claim opens a confirm step that
+  disputed amount; it starts at half of it when the advice is Offer refund, else at all of it; note to
+  the buyer). A bad amount is caught before sending: `aria-invalid`, a red tint on the box and a small
+  red hint pill under it, like the threshold. Accept claim opens a confirm step that
   names the amount going back. Results say "Demo mode: nothing was sent to PayPal" or "Sent to
   PayPal sandbox".
 - **Mobile 375px**: one job per screen: the grid, or the full-screen panel. Header wraps; the

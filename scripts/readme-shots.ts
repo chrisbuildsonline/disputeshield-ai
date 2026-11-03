@@ -134,9 +134,9 @@ try {
   const id = await simulate(page);
   const row = page.locator(`.ag-row[row-id="${id}"]`);
   await row.locator('[col-id="win"]').filter({ hasText: '100%' }).waitFor(WAIT);
-  await waitForToast(page, /Autopilot flagged/);
-  await dismissToast(page);
   const panel = await openRow(page, id);
+  // autopilot is off: the case is scored and left for review, with no flag (and no toast)
+  await panel.getByText('Auto-check: scored 100%, waiting for your review').waitFor(WAIT);
   await expectAi(panel, id);
   const win = (await panel.locator('.score-num').innerText()).trim();
   if (win !== '100%') throw new Error(`the README says the walkthrough scores 100%, the panel shows ${win}`);

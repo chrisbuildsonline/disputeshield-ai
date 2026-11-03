@@ -220,7 +220,7 @@ try {
   watch(mob);
   await mob.goto(`${BASE}/#token=${TOKEN}`);
   await mob.getByText('Demo mode', { exact: true }).waitFor();
-  await mob.locator('.ag-row').nth(6).waitFor(WAIT);
+  await mob.locator('#cards .case-card').nth(6).waitFor(WAIT); // a phone gets case cards, not the grid
   await shot(mob, 'phone.png');
 
   if (errors.length) throw new Error(`the console logged errors:\n${errors.join('\n')}`);

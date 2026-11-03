@@ -118,8 +118,10 @@ bun run dev
 
 Pick the model with `DISPUTESHIELD_LLM`:
 
-- `ollama` (default, and the value for anything unknown). The server is `OLLAMA_HOST` (default `http://localhost:11434`) and the model is `DISPUTESHIELD_OLLAMA_MODEL` (default `qwen3:8b`).
-- `claude` needs `ANTHROPIC_API_KEY`. Without the key it acts like `off`. Set `DISPUTESHIELD_CLAUDE_MODEL` to change the model id.
+Leave it unset and the app uses Claude when `ANTHROPIC_API_KEY` is set, otherwise Ollama. Setting `ollama` or `off` always wins over the key.
+
+- `ollama` (the default without a key). The server is `OLLAMA_HOST` (default `http://localhost:11434`) and the model is `DISPUTESHIELD_OLLAMA_MODEL` (default `qwen3:8b`).
+- `claude` (the default when the key is set) needs `ANTHROPIC_API_KEY`. Set explicitly without the key it acts like `off`. Set `DISPUTESHIELD_CLAUDE_MODEL` to change the model id.
 - `off` uses only the regex parser and the template note.
 
 What the model does, and the guards around it:
@@ -185,7 +187,7 @@ All are in `.env.example`. The ones you are likely to set:
 | `PAYPAL_CLIENT_ID`, `PAYPAL_CLIENT_SECRET` | Sandbox REST app credentials. |
 | `PAYPAL_WEBHOOK_ID` | Turns on webhook signature checks. |
 | `PAYPAL_API_BASE` | PayPal host. Sandbox only. |
-| `DISPUTESHIELD_LLM` | `ollama`, `claude` or `off`. |
+| `DISPUTESHIELD_LLM` | `ollama`, `claude` or `off`. Unset: Claude if `ANTHROPIC_API_KEY` is set, else Ollama. |
 | `OLLAMA_HOST`, `DISPUTESHIELD_OLLAMA_MODEL` | Ollama server and model. |
 | `ANTHROPIC_API_KEY`, `DISPUTESHIELD_CLAUDE_MODEL` | Optional Claude. |
 | `DISPUTESHIELD_DB` | SQLite file. Default `data/disputeshield.db`. |

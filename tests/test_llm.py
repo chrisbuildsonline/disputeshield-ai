@@ -52,7 +52,14 @@ def use_ollama(monkeypatch: pytest.MonkeyPatch) -> None:
 
 def test_default_provider_is_ollama(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("DISPUTESHIELD_LLM")
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
     assert llm.provider() == "ollama"
+
+
+def test_unset_provider_with_key_is_claude(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("DISPUTESHIELD_LLM")
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-test")
+    assert llm.provider() == "claude"
 
 
 @pytest.mark.parametrize(
@@ -64,7 +71,13 @@ def test_default_provider_is_ollama(monkeypatch: pytest.MonkeyPatch) -> None:
         ("claude", None, "off"),  # no key, no Claude
         ("CLAUDE ", "sk-test", "claude"),
         ("", None, "ollama"),
-        ("banana", "sk-test", "ollama"),
+        ("", "sk-test", "claude"),  # unset and a key: Claude
+        ("   ", "sk-test", "claude"),
+        ("", "   ", "ollama"),  # a blank key is no key
+        ("ollama", "sk-test", "ollama"),  # explicit choice wins over the key
+        ("OFF", "sk-test", "off"),
+        ("banana", None, "ollama"),
+        ("banana", "sk-test", "claude"),  # unknown value counts as unset
     ],
 )
 def test_provider_selection(monkeypatch: pytest.MonkeyPatch, value: str, key: str | None, expected: str) -> None:

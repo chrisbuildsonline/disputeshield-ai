@@ -14,13 +14,20 @@ _TIMEOUT = httpx.Timeout(90.0, connect=3.0)
 
 
 def provider() -> Literal["ollama", "claude", "off"]:
-    """DISPUTESHIELD_LLM: ollama (default, also for unknown values) | claude (needs ANTHROPIC_API_KEY) | off."""
+    """DISPUTESHIELD_LLM: ollama | claude (needs ANTHROPIC_API_KEY, else off) | off.
+
+    Unset, blank or unknown counts as "not chosen": Claude if ANTHROPIC_API_KEY is set, else Ollama.
+    Only an explicit ollama or off overrides the key.
+    """
     v = os.environ.get("DISPUTESHIELD_LLM", "").strip().lower()
+    has_key = bool(os.environ.get("ANTHROPIC_API_KEY", "").strip())
     if v == "off":
         return "off"
+    if v == "ollama":
+        return "ollama"
     if v == "claude":
-        return "claude" if os.environ.get("ANTHROPIC_API_KEY") else "off"
-    return "ollama"
+        return "claude" if has_key else "off"
+    return "claude" if has_key else "ollama"
 
 
 def ollama_host() -> str:

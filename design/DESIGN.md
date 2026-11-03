@@ -36,10 +36,16 @@ The **recommendation pill** sits next to the score: Fight (green), Offer refund 
 Accept (red), with the one-line reason under it in muted text.
 
 ## Toast
-Bottom-right on desktop, bottom full-width (12px gutters) on mobile. White surface, 16px radius,
-the surface shadow, a tinted dot for tone (green ok, red error). Title in 15px/700, detail lines
-muted. Lives in a `role=status` region that is always in the DOM. Success hides after 10s; errors
-stay until dismissed. A Dismiss button closes it.
+White surface, 16px radius, the surface shadow, a tinted dot for tone (green ok, amber flag, red
+error). Title in 15px/700, detail lines muted. Lives in a `role=status` region that is always in the
+DOM. Success hides after 10s; errors stay until dismissed. A Dismiss button closes it.
+
+**Toast zone** (a toast never covers a row or a card):
+- Desktop: on the canvas under the grid, right-aligned with the grid's right edge (left of the
+  case panel when one is open). While it shows, the grid gives up its height plus a 16px gap
+  (`--toast-room`, measured from the toast), so rows end above it; the grid's own body scrolls.
+- Phone: in the page flow at the top of the stage, under the header's Simulate button and above
+  the page title, full width. It pushes the page down rather than floating over a card.
 
 ## Screens
 - **Header** (on the canvas, no bar or border): shield mark + title + tagline on the left;
@@ -70,6 +76,12 @@ stay until dismissed. A Dismiss button closes it.
   two lines: the countdown (a red tinted pill under 48 h, 600 ink text otherwise) over a muted
   12px "by 1 Nov, 15:13". Open rows: white with a 3px red bar on the left edge (a pink row fill
   on every open case was too loud and hid the pills). Answered/closed rows: `#fbfbfd`, muted text.
+  Rows jump straight to their new place (no row animation): a sliding row drew over the one
+  inserted into its slot.
+- **Grid with the panel open** (>= 1100px): the grid stops 16px left of the panel instead of
+  running under it, and drops the columns the panel already says, in this order, until the rest
+  fit: Source, Reason, Amount, Respond within, Win %. Status pills are never cut off. At 1440 the
+  grid keeps Dispute, Status, Win % and Respond within. Every column comes back on Close.
 - **Empty state** (inside the grid surface, never AG Grid's "No Rows To Show"): a small two-tone
   SVG (indigo tints: a receipt card with the shield mark), "No disputes yet" 22px/800, one muted
   sentence, then in demo mode "Simulate your first chargeback" (the dark pill) and "Load sample
@@ -92,8 +104,17 @@ stay until dismissed. A Dismiss button closes it.
   red hint pill under it, like the threshold. Accept claim opens a confirm step that
   names the amount going back. Results say "Demo mode: nothing was sent to PayPal" or "Sent to
   PayPal sandbox".
-- **Mobile 375px**: one job per screen: the grid, or the full-screen panel. Header wraps; the
+- **Mobile 375px**: one job per screen: the case cards, or the full-screen panel. Header wraps; the
   panel foot stays at the bottom so the primary action is in thumb reach. Large type kept.
+- **Mobile case cards** (<= 700px, instead of the grid): one white card per case on the canvas
+  (18px radius, the surface shadow, 16-18px padding, 12px apart), in the grid's order, made from the
+  same rows and the same renderers. Anatomy: dispute id (mono 13px, muted) with the status pills
+  (dot, tinted) beside it or wrapped under it; the amount big (30px/800, decimals and code muted);
+  the reason muted 14px; then a hairline and two columns with 11px uppercase labels: *Win chance*
+  (pill + meter) and *Respond within* (the countdown, a red pill under 48 h, over "by 4 Nov, 09:45").
+  Closed cases mute the amount. Each card is a real `<button>` named "Dispute <id>, <amount>,
+  <status>, win chance N%, <time left>"; tap or Enter opens the full-screen panel, Close returns
+  focus to the card. Loading and empty states become white cards of their own.
 
 - **Autopilot** (header): one floating white pill holding a switch (the real `role=switch` checkbox
   drawn as a 40x24 track, grey off, indigo on) and the threshold as a 999px pill input without spin

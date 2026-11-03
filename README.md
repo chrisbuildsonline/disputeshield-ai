@@ -7,6 +7,15 @@ Chargeback defense for PayPal merchants. It takes in PayPal dispute webhooks, re
 - Code: https://github.com/chrisbuildsonline/disputeshield-ai
 - Built for the [PayPal AI Hackathon](https://paypalaihackathon.devpost.com/).
 
+## Try it in 60 seconds
+
+```
+docker build -t disputeshield .
+docker run --rm -p 127.0.0.1:8000:8000 disputeshield
+```
+
+Then open http://localhost:8000 and click **Open demo console**. Demo mode lets anyone who can reach the port in (sandbox only, so the line above publishes it on this machine alone); `-e DISPUTESHIELD_DEMO_MODE=0` turns it off for real use.
+
 ## Why it matters
 
 A small merchant gets a PayPal dispute ("item not received"). The proof is in a carrier receipt and an order export. Finding it, typing it up and answering inside the deadline takes time, and many merchants never answer. An unanswered dispute is a lost dispute.

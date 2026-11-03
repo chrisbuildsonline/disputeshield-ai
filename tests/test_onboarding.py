@@ -129,7 +129,7 @@ def test_readme_has_a_try_it_section_with_the_three_steps() -> None:
     assert m, "no 'Try it in 60 seconds' section"
     body = m.group(1)
     assert "docker build -t disputeshield ." in body
-    assert "docker run --rm -p 8000:8000 disputeshield" in body
+    assert "docker run --rm -p 127.0.0.1:8000:8000 disputeshield" in body  # loopback: the demo hands out its token
     assert "http://localhost:8000" in body and "Open demo console" in body
     assert "DISPUTESHIELD_DEMO_MODE=0" in body
     assert README.index("Try it in 60 seconds") < README.index("## Why it matters")

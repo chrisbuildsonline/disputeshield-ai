@@ -23,13 +23,18 @@ def operator_token() -> str:
     return os.environ.get("DISPUTESHIELD_OPERATOR_TOKEN", "").strip() or _generated
 
 
+def demo_mode() -> bool:
+    return os.environ.get("DISPUTESHIELD_DEMO_MODE") == "1"
+
+
 def log_link() -> None:
-    port = os.environ.get("PORT") or "8000"
+    port = os.environ.get("HOST_PORT") or os.environ.get("PORT") or "8000"  # the published port, not the container's
     log = logging.getLogger("uvicorn.error")
+    demo = ' In demo mode the page has an "Open demo console" button.' if demo_mode() else ""
     if os.environ.get("DISPUTESHIELD_OPERATOR_TOKEN", "").strip():
-        log.warning("Operator console: http://localhost:%s/ (token from DISPUTESHIELD_OPERATOR_TOKEN)", port)
+        log.warning("Operator console: http://localhost:%s/ (token from DISPUTESHIELD_OPERATOR_TOKEN).%s", port, demo)
     else:
-        log.warning("Operator console: http://localhost:%s/#token=%s", port, operator_token())
+        log.warning("Operator console: http://localhost:%s/#token=%s%s", port, operator_token(), demo)
 
 
 async def require_token(request: Request, call_next: RequestResponseEndpoint) -> Response:

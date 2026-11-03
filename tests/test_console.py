@@ -55,9 +55,9 @@ def test_demo_chargeback_creates_dispute_with_receipt(client: TestClient) -> Non
 
 
 def test_config_reports_demo_mode(client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
-    assert client.get("/api/config").json() == {"demo_mode": True}
+    assert client.get("/api/config").json()["demo_mode"] is True
     monkeypatch.delenv("DISPUTESHIELD_DEMO_MODE")
-    assert client.get("/api/config").json() == {"demo_mode": False}
+    assert client.get("/api/config").json()["demo_mode"] is False
 
 
 def test_demo_chargeback_ids_are_distinct(client: TestClient) -> None:

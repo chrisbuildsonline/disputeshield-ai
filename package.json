@@ -5,7 +5,8 @@
   "scripts": {
     "setup": "uv sync",
     "pytest": "uv run pytest -q",
-    "samples": "uv run python scripts/make_samples.py",
+    "paypal:scopes": "uv run python scripts/paypal_scopes.py",
+    "samples":"uv run python scripts/make_samples.py",
     "build": "bun build web/index.html --outdir app/static",
     "dev": "bun run build && DISPUTESHIELD_DEMO_MODE=1 uv run uvicorn app.main:app --reload --port 8000",
     "llm:start": "systemctl --user start ollama || true",

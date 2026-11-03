@@ -246,6 +246,92 @@ async def make_offer(
     return await _call("POST", path, json={"note": note, "offer_amount": amount, "offer_type": offer_type})
 
 
+# ---- invoicing API (second API family) ----
+
+_INVOICE_ID_RE = re.compile(r"[A-Za-z0-9-]+")
+MAX_ITEM_NAME = 200
+
+
+def _invoice_url(invoice_id: str) -> str:
+    if not isinstance(invoice_id, str) or not _INVOICE_ID_RE.fullmatch(invoice_id):
+        raise PayPalError("invalid invoice id (letters, digits and - only)")
+    return f"/v2/invoicing/invoices/{invoice_id}"
+
+
+async def create_invoice(
+    item_name: str, amount: dict[str, Any], *, recipient_name: str | None = None, note: str | None = None
+) -> tuple[str, str | None]:
+    """Create a DRAFT invoice for one item (nothing is sent to anyone). Returns (invoice id, debug id).
+
+    A write, so sandbox only like accept/offer. PayPal answers 201 with a link to the new invoice.
+    """
+    _require_sandbox()
+    if not isinstance(item_name, str) or not item_name.strip() or len(item_name) > MAX_ITEM_NAME:
+        raise PayPalError(f"invoice item name must be 1 to {MAX_ITEM_NAME} characters")
+    check_amount(amount)
+    detail: dict[str, Any] = {"currency_code": amount["currency_code"]}
+    if note:
+        detail["note"] = note[:MAX_NOTE]
+    body: dict[str, Any] = {
+        "detail": detail,
+        "items": [{"name": item_name.strip(), "quantity": "1", "unit_amount": amount}],
+    }
+    if recipient_name and recipient_name.strip():
+        body["primary_recipients"] = [{"billing_info": {"name": {"full_name": recipient_name.strip()[:300]}}}]
+    link, debug_id = await _call_with_debug_id("POST", "/v2/invoicing/invoices", json=body)
+    invoice_id = str(link.get("href") or "").rstrip("/").rsplit("/", 1)[-1]
+    if not invoice_id.startswith("INV") or not _INVOICE_ID_RE.fullmatch(invoice_id):
+        raise PayPalError("PayPal created an invoice but sent no usable invoice id", debug_id=debug_id)
+    return invoice_id, debug_id
+
+
+async def get_invoice(invoice_id: str) -> tuple[dict[str, Any], str | None]:
+    """The invoice body and the call's paypal-debug-id header. A read, like show_dispute."""
+    return await _call_with_debug_id("GET", _invoice_url(invoice_id))
+
+
+async def record_invoice(
+    item_name: str, amount: dict[str, Any], *, recipient_name: str | None = None, note: str | None = None
+) -> dict[str, Any]:
+    """Create a draft invoice and read it back. If the read-back fails the invoice still exists: say so."""
+    invoice_id, debug_id = await create_invoice(item_name, amount, recipient_name=recipient_name, note=note)
+    record: dict[str, Any] = {
+        "invoice_id": invoice_id,
+        "invoice_number": None,
+        "status": "DRAFT",  # what PayPal creates
+        "total": amount,
+        "item": item_name.strip(),
+        "recipient": recipient_name.strip() if recipient_name and recipient_name.strip() else None,
+        "debug_id": debug_id,
+        "lookup_debug_id": None,
+        "verified": False,
+    }
+    try:
+        body, lookup_debug_id = await get_invoice(invoice_id)
+    except PayPalError as e:
+        record["lookup_debug_id"] = e.debug_id
+        return record
+    detail: dict[str, Any] = body["detail"] if isinstance(body.get("detail"), dict) else {}
+    total = body.get("amount") if isinstance(body.get("amount"), dict) else None
+    items = body.get("items") if isinstance(body.get("items"), list) else []
+    recipients = body.get("primary_recipients") if isinstance(body.get("primary_recipients"), list) else []
+    name = None
+    if recipients and isinstance(recipients[0], dict):
+        info = recipients[0].get("billing_info")
+        full = ((info or {}).get("name") or {}).get("full_name") if isinstance(info, dict) else None
+        name = full if isinstance(full, str) else None
+    record.update(
+        invoice_number=detail.get("invoice_number"),
+        status=str(body.get("status") or record["status"]),
+        total=total or amount,
+        item=str(items[0].get("name")) if items and isinstance(items[0], dict) and items[0].get("name") else record["item"],
+        recipient=name or record["recipient"],
+        lookup_debug_id=lookup_debug_id,
+        verified=True,
+    )
+    return record
+
+
 async def adjudicate(dispute_id: str, outcome: str) -> dict[str, Any]:
     """Sandbox only: settle a dispute (it must be UNDER_REVIEW) as BUYER_FAVOR or SELLER_FAVOR."""
     path = _dispute_url(dispute_id, "/adjudicate")

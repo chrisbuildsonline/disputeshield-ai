@@ -41,6 +41,7 @@ class Evidence:
     prior_orders_from_buyer: int | None = None
     item_description_matches: bool | None = None
     refund_offered: bool | None = None
+    invoice_on_file: bool | None = None  # the order was recorded as a PayPal invoice (Invoicing API)
 
 
 @dataclass(frozen=True)
@@ -192,6 +193,9 @@ _RULES: dict[str, tuple[int, list[tuple[str, int, Check]]]] = {
 }
 
 
+INVOICE_LABEL = "Order recorded as a PayPal invoice"
+INVOICE_WEIGHT = 4
+
 FIGHT_AT = 60  # win probability at or above this: fight with evidence
 ACCEPT_BELOW = 30  # below this: not worth fighting, accept the claim; in between, offer a refund
 
@@ -212,4 +216,8 @@ def score(dispute: Dispute, evidence: Evidence) -> ScoreResult:
     base, rules = _RULES.get(dispute.reason, _RULES["other"])
     factors = [Factor(label, weight, bool(check(dispute, evidence))) for label, weight, check in rules]
     total = base + sum(f.weight for f in factors if f.met)
+    if evidence.invoice_on_file is True and total < 100:
+        # Outside the rule sets (they sum to 100), so it only exists once recorded and never pushes past 100.
+        factors.append(Factor(INVOICE_LABEL, min(INVOICE_WEIGHT, 100 - total), True))
+        total += factors[-1].weight
     return ScoreResult(probability=max(0, min(100, total)), factors=factors)

@@ -265,6 +265,18 @@ def add_audit(dispute_id: str, action: str, detail: dict[str, Any] | None = None
         )
 
 
+INVOICE_ACTION = "invoice_recorded"
+
+
+def invoice_records() -> dict[str, dict[str, Any]]:
+    """Per dispute, the detail of its recorded PayPal invoice (the audit row is the record)."""
+    out: dict[str, dict[str, Any]] = {}
+    with closing(_connect()) as conn:
+        for r in conn.execute("SELECT dispute_id, detail FROM audit WHERE action = ? ORDER BY id", (INVOICE_ACTION,)):
+            out.setdefault(r["dispute_id"], json.loads(r["detail"]))
+    return out
+
+
 def list_audit(dispute_id: str) -> list[dict[str, Any]]:
     with closing(_connect()) as conn:
         rows = conn.execute(

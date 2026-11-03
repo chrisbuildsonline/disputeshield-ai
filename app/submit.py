@@ -96,8 +96,11 @@ async def score_preview(dispute_id: str) -> dict[str, Any]:
     docs = store.list_documents(dispute_id, with_data=True)
     evs = [ExtractedEvidence.model_validate(x["evidence"]) for x in docs]
     dispute = scorecard.to_dispute(d, scorecard.billing_of(d["resource"]))
-    result = score(dispute, scorecard.merge(evs))
-    key = (dispute_id, d["reason"], d["amount_value"], tuple((x["name"], x["created_at"]) for x in docs), llm.provider())
+    result = score(dispute, scorecard.merge(evs, dispute_id in store.invoice_records()))
+    key = (
+        dispute_id, d["reason"], d["amount_value"], tuple((x["name"], x["created_at"]) for x in docs), llm.provider(),
+        dispute_id in store.invoice_records(),
+    )
     preview = _PREVIEWS.get(key)
     if preview is None:
         try:
@@ -190,7 +193,7 @@ async def send_evidence(dispute_id: str) -> dict[str, Any]:
     try:
         evs = [ExtractedEvidence.model_validate(x["evidence"]) for x in docs]
         dispute = scorecard.to_dispute(d, scorecard.billing_of(d["resource"]))
-        result = score(dispute, scorecard.merge(evs))
+        result = score(dispute, scorecard.merge(evs, dispute_id in store.invoice_records()))
         dossier = await run_in_threadpool(
             build_dossier, dispute, evs, result, [(x["name"], x["data"]) for x in docs], use_llm=_use_llm()
         )
@@ -268,6 +271,79 @@ async def sync() -> dict[str, Any]:
         "mode": "sandbox" if paypal.is_sandbox() else "live",
         "disputes": out,
     }
+
+
+# ---- second PayPal API family: record the order as an invoice (Invoicing API) ----
+
+INVOICE_LABEL = "Recorded on PayPal sandbox"
+
+
+def _invoice_response(rec: dict[str, Any], *, already: bool) -> dict[str, Any]:
+    demo_mode = rec["mode"] == "demo"
+    return {
+        "mode": rec["mode"],
+        "demo": demo_mode,
+        "source": rec["source"],
+        "label": DEMO_LABEL if demo_mode else INVOICE_LABEL,
+        "status": rec["status"],
+        "invoice_id": rec["invoice_id"],
+        "invoice_number": rec["invoice_number"],
+        "debug_id": rec["debug_id"],
+        "lookup_debug_id": rec["lookup_debug_id"],
+        "fields": {
+            k: rec[k]
+            for k in ("invoice_id", "invoice_number", "status", "total", "item", "recipient", "verified")
+        },
+        "score_before": rec["score_before"],
+        "score_after": rec["score_after"],
+        "score_changed": rec["score_after"] != rec["score_before"],
+        "already_recorded": already,
+    }
+
+
+@router.post("/api/disputes/{dispute_id}/paypal-invoice")
+async def paypal_invoice(dispute_id: str) -> dict[str, Any]:
+    """Record the disputed order as a PayPal invoice: evidence of an agreed sale, and a small score factor.
+
+    Live (a PayPal dispute with keys): creates a draft invoice in the sandbox and reads it back. A simulated
+    dispute gets a fixed fixture labelled "demo". The first result is kept; asking again returns it.
+    """
+    d = _require_dispute(dispute_id)
+    stored = store.invoice_records().get(dispute_id)
+    if stored is not None:
+        return _invoice_response(stored, already=True)
+    if d["source"] == "paypal" and not _has_paypal_keys():
+        raise HTTPException(409, NO_KEYS)
+    docs = store.list_documents(dispute_id)
+    evs = [ExtractedEvidence.model_validate(x["evidence"]) for x in docs]
+    row = scorecard.to_dispute(d, scorecard.billing_of(d["resource"]))
+    order_id = scorecard.merge(evs).order_id
+    item = f"Order {order_id}" if order_id else f"Disputed order for case {dispute_id}"
+    total = {"currency_code": str(d["currency"] or "USD"), "value": str(d["amount_value"] or "").strip()}
+    try:
+        paypal.check_amount(total)
+    except paypal.PayPalError as e:
+        raise HTTPException(422, f"can't invoice this dispute: {e}") from None
+    buyer = d["resource"].get("buyer")
+    recipient = buyer.get("name") if isinstance(buyer, dict) and isinstance(buyer.get("name"), str) else None
+    mode = "paypal" if d["source"] == "paypal" else "demo"
+    if mode == "demo":
+        rec = demo.invoice_fixture(dispute_id, item, total, recipient)
+    else:
+        try:
+            rec = await paypal.record_invoice(item, total, recipient_name=recipient, note=item)
+        except paypal.PayPalError as e:
+            store.add_audit(dispute_id, "invoice_failed", {"error": str(e), "debug_id": e.debug_id})
+            raise HTTPException(
+                502, {"message": str(e), "paypal_name": e.name, "debug_id": e.debug_id}
+            ) from None
+    before = score(row, scorecard.merge(evs)).probability
+    after = score(row, scorecard.merge(evs, True)).probability
+    rec = {**rec, "mode": mode, "source": "live sandbox" if mode == "paypal" else "demo",
+           "score_before": before, "score_after": after}
+    # ponytail: two clicks at once could create two sandbox drafts; the first audit row wins
+    store.add_audit(dispute_id, store.INVOICE_ACTION, rec)
+    return _invoice_response(rec, already=False)
 
 
 # ---- low-odds actions: accept the claim or offer a refund ----

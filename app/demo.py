@@ -2,6 +2,7 @@
 
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
+from hashlib import sha1
 from typing import Any
 from uuid import uuid4
 
@@ -44,6 +45,24 @@ SCENARIOS: tuple[Scenario, ...] = (
         144, "Carlos Vega", "I did not make this purchase",
     ),
 )
+
+
+def invoice_fixture(
+    dispute_id: str, item: str, total: dict[str, str], recipient: str | None
+) -> dict[str, Any]:
+    """A fixed stand-in for the Invoicing API's answer. Same dispute, same fixture; never claims a PayPal id."""
+    tag = sha1(dispute_id.encode()).hexdigest()[:10].upper()
+    return {
+        "invoice_id": f"DEMO-INV-{tag}",
+        "invoice_number": f"DEMO-{tag[:6]}",
+        "status": "DRAFT",
+        "total": total,
+        "item": item,
+        "recipient": recipient,
+        "debug_id": None,
+        "lookup_debug_id": None,
+        "verified": False,
+    }
 
 
 def resource(s: Scenario) -> dict[str, Any]:

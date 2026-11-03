@@ -49,6 +49,25 @@ FULL = Evidence(
 )
 
 
+def test_invoice_on_file_adds_one_small_factor_only_when_present() -> None:
+    plain = score(dispute(), DEMO)
+    with_invoice = score(dispute(), dataclasses.replace(DEMO, invoice_on_file=True))
+    assert [f.label for f in with_invoice.factors][:-1] == [f.label for f in plain.factors]
+    extra = with_invoice.factors[-1]
+    assert "nvoice" in extra.label and extra.met and 0 < extra.weight <= 5
+    assert with_invoice.probability == plain.probability + extra.weight
+    assert score(dispute(), dataclasses.replace(DEMO, invoice_on_file=None)) == plain
+    assert score(dispute(), dataclasses.replace(DEMO, invoice_on_file=False)) == plain
+
+
+@pytest.mark.parametrize("reason", REASONS)
+def test_invoice_never_pushes_past_100_or_adds_a_dead_factor(reason: str) -> None:
+    full = score(dispute(reason), dataclasses.replace(FULL, invoice_on_file=True))
+    assert full.probability == 100
+    base = score(dispute(reason), FULL)
+    assert full.factors == base.factors  # at 100 already, so no factor is added
+
+
 def test_demo_scores_exactly_94() -> None:
     result = score(dispute(), DEMO)
     assert result.probability == 94

@@ -277,6 +277,7 @@ const gridApi: GridApi<Dispute> = createGrid<Dispute>(byId("grid"), {
   // drawn past the grid's right edge (Respond within cut to "RESPON") until they arrived
   suppressColumnMoveAnimation: true,
   onGridSizeChanged: (e) => fitColumns(e.api),
+  onGridReady: (e) => window.addEventListener("resize", () => fitColumns(e.api)), // AG Grid's own size event lags a frame or more
   rowSelection: { mode: "singleRow", checkboxes: false, enableClickSelection: true },
   rowClassRules: {
     "row-contested": (p) => !!p.data && needsAction(p.data),

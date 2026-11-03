@@ -12,6 +12,7 @@ import {
   ApiError,
   esc,
   handleUnauthorized,
+  hasToken,
   money,
   moneyParts,
   needsAction,
@@ -41,14 +42,23 @@ const emptyEl = byId("empty");
 
 const gate = byId("token-gate");
 const gateOpen = () => !gate.hidden;
-let tokenTried = false;
+let demoToken: string | null = null; // /api/config hands it out in demo mode only
 
-handleUnauthorized(() => {
+/** The sign-in card. In demo mode it leads with one click into the console; the paste form steps back. */
+function showGate(refused: boolean): void {
+  const demo = demoToken !== null;
+  byId("gate-demo").hidden = !demo;
+  byId("gate-token-head").hidden = !demo;
+  byId("token-title").textContent = demo ? "No operator token needed" : "Operator token needed";
+  byId("token-use").classList.toggle("btn-primary", !demo); // one dark pill per screen
   gate.hidden = false;
   document.body.classList.add("locked");
   statusEl.textContent = "Operator token needed";
-  byId("token-error").textContent = tokenTried ? "That token was not accepted." : "";
-});
+  byId("token-error").textContent = refused ? "That token was not accepted." : "";
+}
+
+// a 401 only comes back for a token we sent (with none, nothing protected is called): a link's or a pasted one
+handleUnauthorized(() => showGate(true));
 
 const badge = (text: string, cls: string) => `<span class="badge ${cls}">${esc(text)}</span>`;
 
@@ -562,14 +572,18 @@ async function loadAutopilot(): Promise<void> {
 }
 
 async function useToken(): Promise<void> {
-  tokenTried = true;
   gate.hidden = true;
   document.body.classList.remove("locked");
   statusEl.textContent = "Checking API...";
   await loadAutopilot();
   await refresh();
-  if (!gateOpen()) tokenTried = false;
 }
+
+byId("demo-open").addEventListener("click", () => {
+  if (demoToken === null) return;
+  setToken(demoToken);
+  void useToken();
+});
 
 byId("token-form").addEventListener("submit", (e) => {
   e.preventDefault();
@@ -584,15 +598,21 @@ window.addEventListener("hashchange", () => {
   if (takeTokenFromHash()) void useToken();
 });
 
+if (!hasToken()) document.body.classList.add("locked"); // no console flashing up behind the card while /api/config answers
 try {
-  const cfg = await api<{ demo_mode: boolean }>("/api/config");
+  const cfg = await api<{ demo_mode: boolean; demo_token?: string | null }>("/api/config");
   byId("demo-badge").hidden = !cfg.demo_mode;
   simulateBtn.hidden = !cfg.demo_mode;
+  demoToken = cfg.demo_token ?? null;
 } catch {
   /* the poll below reports the outage */
 }
-await loadAutopilot();
-await refresh();
+if (hasToken()) {
+  await loadAutopilot();
+  await refresh();
+} else {
+  showGate(false); // a first visit: ask before calling anything that needs a token
+}
 setInterval(() => void refresh(), POLL_MS);
 
 export {};

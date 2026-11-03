@@ -1549,40 +1549,198 @@ kbd {
   margin: 14px 22px 0;
 }
 
-/* operator token gate: nothing else is shown until the server accepts a token */
+/* operator token gate: a sign-in card centred on the canvas; nothing else shows until the server accepts a token */
 .gate {
-  max-width: 520px;
-  margin: 32px 28px;
-  padding: 18px 20px;
-  gap: 8px;
+  width: min(440px, calc(100% - 24px));
+  margin: auto;
+  padding: 32px;
+  background: #fff;
+  border-radius: 20px;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04), 0 16px 40px rgba(15, 23, 42, 0.08);
 }
 
 .gate[hidden] {
   display: none;
 }
 
-.gate h2,
-.gate p {
-  margin: 0;
+:where(.gate) :is(p, h2, h3) {
+  margin: 0; /* low specificity: each part sets its own top margin */
 }
 
-.gate-form {
+.gate-brand {
   display: flex;
   align-items: center;
   gap: 10px;
+  font-size: 15px;
+  font-weight: 700;
 }
 
-.gate-form input {
+.gate-mark {
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 11px;
+  background: #eef2ff;
+}
+
+.gate-mark::before {
+  content: "";
+  width: 18px;
+  height: 20px;
+  background: var(--brand);
+  clip-path: polygon(50% 0, 100% 18%, 100% 55%, 50% 100%, 0 55%, 0 18%);
+}
+
+.gate h2 {
+  margin-top: 24px;
+  font-size: 28px;
+  font-weight: 800;
+  line-height: 1.15;
+  letter-spacing: -0.025em;
+  text-wrap: balance;
+}
+
+.gate-lede {
+  margin-top: 10px;
+  color: var(--muted);
+  font-size: 15px;
+}
+
+.gate-demo {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-top: 24px;
+}
+
+.gate-demo[hidden] {
+  display: none;
+}
+
+.gate-note {
+  color: var(--muted);
+  font-size: 13px;
+  text-wrap: pretty;
+}
+
+.gate-off {
+  display: block;
+  margin-top: 4px;
+}
+
+.gate-note code {
+  padding: 1px 6px;
+  border-radius: 6px;
+  background: var(--inset);
+  color: var(--ink);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.gate-token {
+  margin-top: 24px;
+}
+
+/* in demo mode the paste form steps back under a hairline, quieter type */
+.gate-demo:not([hidden]) + .gate-token {
+  padding-top: 20px;
+  border-top: 1px solid var(--line);
+}
+
+.gate-label {
+  margin-bottom: 4px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.gate-label[hidden] {
+  display: none;
+}
+
+.gate-hint {
+  color: var(--muted);
+  font-size: 14px;
+}
+
+.gate-demo:not([hidden]) + .gate-token .gate-hint {
+  font-size: 13px;
+}
+
+.gate-form {
+  margin-top: 14px;
+}
+
+.gate-form label {
+  display: block;
+  margin-bottom: 6px;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.gate-row {
+  display: flex;
+  gap: 8px;
+}
+
+.gate-row input {
   flex: 1;
+  min-width: 0;
+  padding: 9px 16px;
+  border: 1px solid #d5d9e2;
+  border-radius: 999px;
+  background: #fff;
+  color: var(--ink);
   font: inherit;
-  padding: 8px 10px;
-  border: 1px solid #cbd5e1;
-  border-radius: 8px;
+  font-size: 14px;
+}
+
+.gate-row .btn {
+  flex: none;
+}
+
+.gate-error:not(:empty) {
+  margin-top: 12px;
+  padding: 8px 12px;
+  border-radius: 12px;
+  background: #fee2e2;
+  color: var(--red);
+  font-size: 14px;
+  font-weight: 600;
 }
 
 .locked .stage,
-.locked .top-actions {
+.locked .top {
   display: none;
+}
+
+@media (max-width: 700px) {
+  .gate {
+    padding: 24px 20px;
+    border-radius: 18px;
+  }
+
+  .gate h2 {
+    margin-top: 20px;
+  }
+
+  #demo-open {
+    padding: 13px 18px; /* a full-size thumb target */
+  }
+}
+
+/* the card says it all; the status line stays for screen readers */
+.locked .foot {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
 }
 
 .foot {

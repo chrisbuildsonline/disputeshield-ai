@@ -120,8 +120,24 @@ DOM. Success hides after 10s; errors stay until dismissed. A Dismiss button clos
   drawn as a 40x24 track, grey off, indigo on) and the threshold as a 999px pill input without spin
   arrows. A bad threshold gets `aria-invalid`, a red tint and a small red hint pill under it; it is
   not sent until it is a whole number 0-100.
-- **Banners** (result, Needs review, token gate): tinted cards, 14px radius, no border.
+- **Banners** (result, Needs review): tinted cards, 14px radius, no border.
 - **Busy buttons**: Simulate chargeback reads "Reading the receipt…" with a small spinning ring.
 
-## Where the current CSS differs (left for later features)
-- The token gate is still a plain tinted banner, not a designed card.
+## Token gate
+A sign-in card, the only thing on the canvas until the server accepts a token (the header, stage and
+footer status line are hidden; the status stays for screen readers). The page calls no protected
+`/api` route without a token, so a first visit logs no 401.
+- **Card**: white, 20px radius (18px on a phone), a slightly deeper surface shadow, 32px padding
+  (24px 20px on a phone), `min(440px, 100% - 24px)` wide, centred on the canvas both ways.
+- **Anatomy**: 36px indigo-tint tile with the shield mark + "DisputeShield AI" 15px/700; title
+  28px/800, -0.025em, balanced wrap; one muted 15px line on what the console is.
+- **Demo mode** (`/api/config` returns a `demo_token`): title "No operator token needed", then
+  "Open demo console" as the one dark pill, full width; it stores the token and opens the console.
+  Under it a muted 13px note: sandbox only, anyone who can reach the port can open it, and
+  `DISPUTESHIELD_DEMO_MODE=0` (inset code chip) turns it off. The paste form follows under a hairline
+  with a "Have an operator token?" section label, quieter hint text, and Use token as a secondary pill.
+- **Demo off**: title "Operator token needed", the hint, and the paste form with Use token as the
+  dark pill. No demo button.
+- **Form**: "Token" label 13px/600; a 999px pill input and the button side by side.
+- **Refused** (a link or a pasted token got a 401): "That token was not accepted." in a red-tint
+  12px-radius strip under the form; the demo button stays on offer.

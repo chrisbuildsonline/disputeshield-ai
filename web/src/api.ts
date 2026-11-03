@@ -139,6 +139,8 @@ export function setToken(value: string): void {
   localStorage.setItem(TOKEN_KEY, token);
 }
 
+export const hasToken = (): boolean => token !== "";
+
 export function handleUnauthorized(callback: () => void): void {
   onUnauthorized = callback;
 }

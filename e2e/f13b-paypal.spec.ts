@@ -197,7 +197,7 @@ test("an offer above the disputed amount is refused, a valid offer goes through"
   await offer.click();
   const amount = detail.getByLabel("Refund amount");
   await expect(amount).toBeFocused();
-  await expect(amount).toHaveValue("49.90");
+  await expect(amount).toHaveValue("24.95"); // a partial refund: the form starts at half the disputed amount
   await expect(amount).toHaveAttribute("max", "49.90");
   await expect(detail.getByText("USD", { exact: true })).toBeVisible();
   await expect(detail.getByText("Up to $49.90, the disputed amount")).toBeVisible();
@@ -208,9 +208,16 @@ test("an offer above the disputed amount is refused, a valid offer goes through"
   await page.screenshot({ path: `${SHOTS}/f13b-offer-mobile.png` });
   await page.setViewportSize(DESKTOP);
 
+  // too much is caught in the browser: marked, said under the box, and never sent
+  const posts: string[] = [];
+  page.on("request", (r) => {
+    if (r.method() === "POST" && r.url().endsWith("/offer")) posts.push(r.url());
+  });
   await amount.fill("60");
   await detail.getByRole("button", { name: "Send offer" }).click();
-  await expect(detail.getByText("The offer was not sent: offer can't be more than the disputed 49.90 USD.")).toBeVisible();
+  await expect(amount).toHaveAttribute("aria-invalid", "true");
+  await expect(detail.locator("#offer-error")).toHaveText("The refund can't be more than $49.90, the disputed amount.");
+  expect(posts).toEqual([]);
 
   await amount.fill("20");
   await detail.getByRole("button", { name: "Send offer" }).click();
@@ -222,5 +229,7 @@ test("an offer above the disputed amount is refused, a valid offer goes through"
   await page.screenshot({ path: `${SHOTS}/f13b-offered.png` });
 
   await expect(row.locator('[col-id="status"]')).toHaveText("Waiting for buyer response");
-  expect(unexpected(errors, [422])).toEqual([]);
+  expect(posts).toHaveLength(1); // only the valid offer went out
+  expect(errors).toEqual([]); // and no refused request (422) on the way
+
 });

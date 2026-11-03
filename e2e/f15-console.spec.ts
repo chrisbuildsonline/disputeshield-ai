@@ -35,14 +35,38 @@ test.afterEach(async ({ request }) => {
   await request.put("/api/autopilot", { data: { enabled: false, threshold: 85 } });
 });
 
-/** A simulated chargeback that the (off) autopilot has flagged: an Open row with a Needs review pill. */
-async function flaggedCase(request: APIRequestContext): Promise<string> {
+/** A simulated chargeback (100%) that the off autopilot has scored and left for the operator: an Open row, not flagged. */
+async function waitingCase(request: APIRequestContext): Promise<string> {
   const res = await request.post("/api/demo/chargeback");
   expect(res.ok()).toBeTruthy();
   const id = ((await res.json()) as Row).id;
   await expect
+    .poll(async () => ((await (await request.get(`/api/disputes/${id}/audit`)).json()) as { action: string }[]).map((a) => a.action))
+    .toContain("autopilot_awaiting");
+  return id;
+}
+
+/** An Open dispute with no evidence that the autopilot flagged for a real reason: an Open row with a Needs review pill. */
+async function flaggedCase(request: APIRequestContext): Promise<string> {
+  await request.put("/api/autopilot", { data: { enabled: true, threshold: 85 } }); // so the webhook runs it (afterEach turns it off)
+  const id = `PP-D-F15O${Date.now().toString(36).toUpperCase()}`;
+  const res = await request.post("/api/webhooks/paypal", {
+    data: {
+      id: `WH-${id}`,
+      event_type: "CUSTOMER.DISPUTE.CREATED",
+      resource: {
+        dispute_id: id,
+        reason: "MERCHANDISE_OR_SERVICE_NOT_RECEIVED",
+        status: "OPEN",
+        dispute_amount: { currency_code: "USD", value: "49.90" },
+        seller_response_due_date: new Date(Date.now() + 5 * 24 * 3600 * 1000).toISOString(),
+      },
+    },
+  });
+  expect(res.ok(), await res.text()).toBeTruthy();
+  await expect
     .poll(async () => ((await (await request.get("/api/disputes")).json()) as Row[]).find((d) => d.id === id)?.review_reasons ?? null)
-    .not.toBeNull();
+    .toEqual(["No evidence documents"]);
   return id;
 }
 
@@ -130,7 +154,7 @@ test("the status column fits Open and Needs review side by side", async ({ page,
 
 test("the open panel leaves the header controls visible and clickable", async ({ page, request }) => {
   const errors = watchErrors(page);
-  const id = await flaggedCase(request);
+  const id = await waitingCase(request);
   await page.goto("/#token=e2e-token");
   const detail = await openCase(page, id);
   const panel = (await detail.boundingBox())!;
@@ -148,7 +172,7 @@ test("the open panel leaves the header controls visible and clickable", async ({
 
 test("on a phone the panel title never splits the dispute id", async ({ page, request }) => {
   const errors = watchErrors(page);
-  const id = await flaggedCase(request);
+  const id = await waitingCase(request);
   await page.goto("/#token=e2e-token");
   const detail = await openCase(page, id);
   await page.setViewportSize(MOBILE);
@@ -240,7 +264,7 @@ test("autopilot is a switch and the threshold a pill input, both reachable by ke
 
 test("Escape closes the panel after Submit evidence, and focus lands on the result", async ({ page, request }) => {
   const errors = watchErrors(page);
-  const id = await flaggedCase(request);
+  const id = await waitingCase(request);
   await page.goto("/#token=e2e-token");
   const detail = await openCase(page, id);
   await detail.getByRole("button", { name: "Submit evidence" }).click();
@@ -338,11 +362,17 @@ test("a toast says what the autopilot did with a new chargeback", async ({ page 
   await page.screenshot({ path: `${SHOTS}/f15-toast-submitted.png` });
   await toast.getByRole("button", { name: "Dismiss" }).click();
 
+  // off: a 100% case has nothing wrong with it, so it is not flagged and no flag toast cries wolf
   await sw.uncheck();
   await expect.poll(async () => (await page.request.get("/api/autopilot")).json()).toEqual({ enabled: false, threshold: 85 });
-  const flagged = await simulate();
-  await expect(toast).toContainText(`Autopilot flagged ${flagged} for review`);
-  await expect(toast).toContainText("Waiting for you to review: autopilot is off");
+  const waiting = await simulate();
+  await expect
+    .poll(async () => ((await (await page.request.get(`/api/disputes/${waiting}/audit`)).json()) as { action: string }[]).map((a) => a.action))
+    .toContain("autopilot_awaiting");
+  await page.waitForResponse((r) => r.url().endsWith("/api/disputes")); // a poll after the autopilot finished
+  const row = page.locator(`.ag-row[row-id="${waiting}"]`);
+  await expect(row.locator('[col-id="status"] .badge')).toHaveText(["Open"]);
+  await expect(toast).not.toContainText("flagged");
   expect(errors).toEqual([]);
 });
 

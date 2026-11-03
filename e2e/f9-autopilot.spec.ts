@@ -26,7 +26,7 @@ async function simulate(page: Page): Promise<string> {
   return ((await res.json()) as { id: string }).id;
 }
 
-test("autopilot sends a chargeback on its own, and flags the next one when switched off", async ({ page }) => {
+test("autopilot sends a chargeback on its own, and leaves the next one for review when switched off", async ({ page }) => {
   const errors = watchErrors(page);
   await page.goto("/#token=e2e-token");
   const toggle = page.getByRole("switch", { name: "Autopilot" });
@@ -51,18 +51,20 @@ test("autopilot sends a chargeback on its own, and flags the next one when switc
   await page.screenshot({ path: `${SHOTS}/f9-autopilot-on.png` });
   await detail.getByRole("button", { name: /Close/ }).click();
 
-  // off: the next one is flagged, not sent
+  // off: the next one is scored and left open for a person; it scores 100%, so nothing flags it
   await toggle.uncheck();
   await expect.poll(async () => (await page.request.get("/api/autopilot")).json()).toEqual({ enabled: false, threshold: 85 });
-  const flaggedId = await simulate(page);
-  const flagged = page.locator(`.ag-row[row-id="${flaggedId}"]`);
-  await expect(flagged).toHaveClass(/row-contested/);
-  await expect(flagged.getByText("Needs review")).toBeVisible();
+  const waitingId = await simulate(page);
+  const waiting = page.locator(`.ag-row[row-id="${waitingId}"]`);
+  await expect(waiting).toHaveClass(/row-contested/);
+  await waiting.locator('[col-id="reason"]').click();
+  const waitingDetail = page.getByRole("dialog", { name: `Dispute ${waitingId}` });
+  await expect(waitingDetail.getByText("Auto-check: scored 100%, waiting for your review")).toBeVisible();
+  await expect(waitingDetail.getByRole("button", { name: "Submit evidence" })).toBeEnabled(); // not sent
+  await expect(waitingDetail.locator("#detail-flag .banner")).toHaveCount(0);
+  await expect(waiting.getByText("Needs review")).toHaveCount(0);
   await expect(sent.getByText("Needs review")).toBeHidden();
-  await flagged.locator('[col-id="reason"]').click();
-  const flaggedDetail = page.getByRole("dialog", { name: `Dispute ${flaggedId}` });
-  await expect(flaggedDetail.getByText("Waiting for you to review: autopilot is off").first()).toBeVisible();
-  await page.screenshot({ path: `${SHOTS}/f9-flagged.png` });
+  await page.screenshot({ path: `${SHOTS}/f9-awaiting.png` });
 
   // a bad threshold is refused and says so
   await threshold.fill("101");

@@ -73,6 +73,19 @@ const gridOrder = (page: Page) =>
   });
 
 async function openCase(page: Page, id: string): Promise<Locator> {
+  if (page.viewportSize()!.width <= 700) {
+    // a phone lists the cases as cards: tap the case's card
+    const card = page.locator(`#cards .case-card[data-id="${id}"]`);
+    await card.scrollIntoViewIfNeeded();
+    await card.click();
+  } else await openRow(page, id);
+  const detail = page.getByRole("dialog", { name: `Dispute ${id}` });
+  await expect(detail.getByRole("heading", { name: "Win probability" })).toBeVisible();
+  await expect(detail.locator(".audit li").first()).toBeVisible();
+  return detail;
+}
+
+async function openRow(page: Page, id: string): Promise<void> {
   await expect
     .poll(() =>
       page.locator("#grid").evaluate((grid, id) => {
@@ -92,10 +105,6 @@ async function openCase(page: Page, id: string): Promise<Locator> {
     )
     .toBe(true);
   await page.locator(`.ag-row[row-id="${id}"] [col-id="reason"]`).click();
-  const detail = page.getByRole("dialog", { name: `Dispute ${id}` });
-  await expect(detail.getByRole("heading", { name: "Win probability" })).toBeVisible();
-  await expect(detail.locator(".audit li").first()).toBeVisible();
-  return detail;
 }
 
 test("the audit trail says the auto-check is waiting, and only real flags show Needs review", async ({ page, request }) => {

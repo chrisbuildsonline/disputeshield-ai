@@ -65,7 +65,16 @@ async function caseWithRoom(request: APIRequestContext): Promise<{ id: string; b
   throw new Error("no seeded case scores under 97%");
 }
 
-async function openCase(page: Page, id: string, col = "reason"): Promise<Locator> {
+async function openCase(page: Page, id: string): Promise<Locator> {
+  const panel = page.getByRole("dialog", { name: `Dispute ${id}` });
+  if (page.viewportSize()!.width <= 700) {
+    // a phone lists the cases as cards: tap the case's card
+    const card = page.locator(`#cards .case-card[data-id="${id}"]`);
+    await card.scrollIntoViewIfNeeded();
+    await card.tap();
+    await expect(panel.getByRole("heading", { name: "Extracted evidence" })).toBeVisible();
+    return panel;
+  }
   // the grid only draws the rows near its scroll position: page down until this one is on screen
   await expect
     .poll(() =>
@@ -85,10 +94,9 @@ async function openCase(page: Page, id: string, col = "reason"): Promise<Locator
       }, id),
     )
     .toBe(true);
-  const cell = page.locator(`.ag-row[row-id="${id}"] [col-id="${col}"]`);
+  const cell = page.locator(`.ag-row[row-id="${id}"] [col-id="reason"]`);
   await cell.scrollIntoViewIfNeeded();
   await cell.click();
-  const panel = page.getByRole("dialog", { name: `Dispute ${id}` });
   await expect(panel.getByRole("heading", { name: "Extracted evidence" })).toBeVisible();
   return panel;
 }
@@ -259,7 +267,7 @@ test.describe("phone", () => {
     const errors = watchErrors(page);
     const { id, before } = await caseWithRoom(request);
     await page.goto("/#token=e2e-token");
-    const panel = await openCase(page, id, "id");
+    const panel = await openCase(page, id);
     const body = panel.locator(".detail-body");
     const btn = panel.getByRole("button", { name: ACTION });
     await btn.evaluate((b) => b.scrollIntoView({ block: "center" }));

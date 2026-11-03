@@ -164,9 +164,9 @@ test.describe("phone", () => {
       const errors = watchErrors(page);
       const s = await scoreOf(request, ids[name]);
       await page.goto("/#token=e2e-token");
-      const cell = page.locator(`.ag-row[row-id="${ids[name]}"] [col-id="id"]`);
-      await cell.scrollIntoViewIfNeeded();
-      await cell.click();
+      const card = page.locator(`#cards .case-card[data-id="${ids[name]}"]`); // a phone lists the cases as cards
+      await card.scrollIntoViewIfNeeded();
+      await card.tap();
       const panel = page.getByRole("dialog", { name: `Dispute ${ids[name]}` });
       await expect(panel).toBeVisible();
       await expectRecordedCase(panel, s, name);

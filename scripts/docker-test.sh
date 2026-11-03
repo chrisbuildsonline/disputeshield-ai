@@ -13,7 +13,7 @@ docker rm -f "$NAME" > /dev/null 2>&1 || true
 # Docker Desktop's host network is its VM, so localhost is not the host's Ollama: go through host.docker.internal.
 docker run --name "$NAME" --network host --env-file .env \
   -e OLLAMA_HOST=http://host.docker.internal:11434 --add-host host.docker.internal:host-gateway "$IMAGE" \
-  sh -c 'uv run pytest -q > /app/pytest.log 2>&1; echo exit=$? >> /app/pytest.log' || true
+  sh -c 'uv run pytest -q "$@" > /app/pytest.log 2>&1; echo exit=$? >> /app/pytest.log' sh "$@" || true
 docker cp "$NAME:/app/pytest.log" "$LOG"
 cat "$LOG"
 

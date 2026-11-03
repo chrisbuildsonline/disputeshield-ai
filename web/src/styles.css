@@ -1899,3 +1899,43 @@ kbd {
     box-shadow: var(--shadow);
   }
 }
+
+/* Add evidence: a pill above the cards, inside a drop zone that wraps the whole evidence area */
+.drop {
+  margin: -12px -14px 0; /* constant room all round, so the ring never touches the heading and nothing moves when is-over toggles */
+  padding: 12px 14px 14px;
+  border-radius: 16px;
+  transition: background 0.12s;
+}
+
+.drop.is-over {
+  background: #eef0ff;
+  box-shadow: inset 0 0 0 2px #a5b4fc;
+}
+
+.add-row {
+  margin: 4px 0 12px;
+}
+
+.add-btn {
+  white-space: nowrap;
+}
+
+.drop > .banner-bad {
+  margin-bottom: 12px;
+}
+
+.drop-hint {
+  margin: 0 0 8px;
+}
+
+@media (max-width: 700px) {
+  .add-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    min-height: 44px;
+    font-size: 15px;
+  }
+}

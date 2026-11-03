@@ -157,23 +157,32 @@ export function takeTokenFromHash(): boolean {
   return true;
 }
 
-export async function api<T>(path: string, method = "GET", json?: unknown): Promise<T> {
+export function api<T>(path: string, method = "GET", json?: unknown): Promise<T> {
+  return send<T>(path, method, json === undefined ? undefined : JSON.stringify(json), "application/json");
+}
+
+/** POST raw file bytes (an evidence PDF), same token and errors as api(). */
+export function postFile<T>(path: string, file: Blob): Promise<T> {
+  return send<T>(path, "POST", file, file.type || "application/pdf");
+}
+
+async function send<T>(path: string, method: string, body: BodyInit | undefined, type: string): Promise<T> {
   const headers: Record<string, string> = {};
   if (token) headers.authorization = `Bearer ${token}`;
-  if (json !== undefined) headers["content-type"] = "application/json";
+  if (body !== undefined) headers["content-type"] = type;
   let res: Response;
   try {
-    res = await fetch(path, { method, headers, body: json === undefined ? undefined : JSON.stringify(json) });
+    res = await fetch(path, { method, headers, body });
   } catch {
     throw new ApiError(0, "Could not reach the server.");
   }
-  const body: unknown = await res.json().catch(() => null);
+  const data: unknown = await res.json().catch(() => null);
   if (res.status === 401) onUnauthorized();
   if (!res.ok) {
-    const detail = body && typeof body === "object" && "detail" in body ? (body as { detail: unknown }).detail : body;
+    const detail = data && typeof data === "object" && "detail" in data ? (data as { detail: unknown }).detail : data;
     throw new ApiError(res.status, detail);
   }
-  return body as T;
+  return data as T;
 }
 
 export function esc(value: unknown): string {

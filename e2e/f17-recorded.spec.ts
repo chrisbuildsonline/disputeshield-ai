@@ -144,11 +144,11 @@ test("a live model read shows the plain AI badge and no recorded line", async ({
   await page.goto("/#token=e2e-token");
   const panel = await openCase(page, ids.walkthrough);
   const badge = panel.locator("#h-evidence ~ .card .card-head .badge");
-  await expect(badge).toHaveText(`AI · ${s.documents[0].evidence.model}`);
+  await expect(badge).toHaveText(`AI · ${s.documents[0].evidence.model} · live`);
   await expect(badge).toHaveClass(/badge-ai/);
   await expect(badge).not.toHaveClass(/badge-recorded/);
   await expect(badge).not.toHaveAttribute("title", /.+/);
-  await expect(noteBadge(panel)).toHaveText(`AI · ${s.dossier.note_model}`);
+  await expect(noteBadge(panel)).toHaveText(`AI · ${s.dossier.note_model} · live`);
   await expect(noteBadge(panel)).not.toHaveClass(/badge-recorded/);
   await expect(panel.locator(".recorded-line")).toHaveCount(0);
   await expect(panel.getByText(/recorded/i)).toHaveCount(0);

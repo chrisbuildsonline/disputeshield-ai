@@ -4,6 +4,7 @@ import {
   esc,
   money,
   needsAction,
+  postFile,
   reasonLabel,
   statusLabel,
   type ActResult,
@@ -110,9 +111,10 @@ const START_OLLAMA = "Start Ollama for live reads.";
 function sourceBadge(source: string, model?: string | null): string {
   const recorded = source === "recorded";
   const ai = recorded || source === "ollama" || source === "claude";
-  if (!ai) return `<span class="badge badge-muted">${source === "template" ? "Template" : "Regex fallback"}</span>`;
+  if (source === "template") return `<span class="badge badge-muted">Template</span>`;
+  if (!ai) return `<span class="badge badge-muted" title="No model answered, so the text parser read this PDF">Text parser</span>`;
   const name = esc(model || (source === "claude" ? "Claude" : recorded ? "the model" : "Ollama"));
-  if (!recorded) return `<span class="badge badge-ai">AI &middot; ${name}</span>`;
+  if (!recorded) return `<span class="badge badge-ai">AI &middot; ${name} &middot; live</span>`;
   return `<span class="badge badge-ai badge-recorded" title="Recorded from a real ${name} run. ${START_OLLAMA}">AI &middot; ${name} &middot; recorded</span>`;
 }
 
@@ -136,7 +138,7 @@ function factText(e: Evidence, k: keyof Evidence, currency: string | null): stri
 }
 
 function renderEvidence(score: Score, currency: string | null): string {
-  if (!score.documents.length) return `<p class="muted">No documents uploaded yet.</p>`;
+  if (!score.documents.length) return `<p class="muted drop-hint">No documents uploaded yet. Drop a PDF here, or use Add evidence.</p>`;
   return score.documents
     .map((doc) => {
       const e = doc.evidence;
@@ -293,6 +295,27 @@ export function errorText(e: unknown, act: Act = "submit"): string {
   return text || "Something went wrong. Please try again.";
 }
 
+/** A plain sentence for a refused or failed evidence upload (the server's 422 wording is for developers). */
+export function uploadErrorText(e: unknown): string {
+  if (!(e instanceof ApiError)) return "Something went wrong. Please try again.";
+  const text = typeof e.detail === "string" ? e.detail : "";
+  if (e.status === 0) return text || "Could not reach the server.";
+  if (e.status === 413 || text.includes("larger than")) return "That PDF is over the 10 MB limit.";
+  if (e.status === 422) {
+    if (/not a PDF|does not look like|file type not allowed/.test(text)) return "That file isn't a PDF.";
+    if (text.startsWith("duplicate file name")) return "A file with that name is already added. Rename it and try again.";
+    if (text.startsWith("file name not allowed")) return "That file name can't be used. Rename the file and try again.";
+    return `That PDF can't be added${text ? `: ${text}` : ""}.`;
+  }
+  return "Something went wrong. Please try again.";
+}
+
+/** The first bytes of a real PDF. */
+async function looksLikePdf(file: File): Promise<boolean> {
+  const head = new Uint8Array(await file.slice(0, 5).arrayBuffer());
+  return String.fromCharCode(...head) === "%PDF-";
+}
+
 export interface Detail {
   open(d: Dispute): void;
   close(): void;
@@ -330,6 +353,60 @@ export function createDetail(opts: { onClose: (id: string) => void; onSubmitted:
   let invoice: InvoiceView | null = null; // the POST answer, before the audit poll catches up
   let invoiceError: string | null = null;
   let invoiceBusy: string | null = null; // the dispute id being recorded, so a switch of case can't unlock another one
+  let adding: string | null = null; // the dispute id a PDF is being read for
+  let evidenceError: string | null = null;
+
+  /** The evidence section: heading, the Add evidence pill with its hidden file input, any error, the cards or the empty hint. */
+  function renderEvidenceBox(sc: Score): string {
+    const busy = adding !== null && adding === current?.id;
+    const label = busy ? `<span class="spinner" aria-hidden="true"></span>Reading…` : "Add evidence";
+    const err = evidenceError ? `<div class="banner banner-bad" role="alert"><span>${esc(evidenceError)}</span></div>` : "";
+    const recorded = sc.documents.some((d) => d.evidence.source === "recorded");
+    return `<h3 id="h-evidence">Extracted evidence</h3>
+      <div class="add-row"><button id="add-evidence-btn" class="btn add-btn" type="button"${busy ? ' disabled aria-busy="true"' : ""}>${label}</button>
+      <input id="evidence-file" type="file" accept="application/pdf" hidden></div>${err}
+      ${renderEvidence(sc, current?.currency ?? null)}${recorded ? recordedLine(sc) : ""}`;
+  }
+
+  function paintEvidence(): void {
+    const box = document.getElementById("evidence-box");
+    if (box && score) box.innerHTML = renderEvidenceBox(score);
+  }
+
+  async function addFiles(files: File[]): Promise<void> {
+    if (!current || !score || adding || !files.length) return;
+    const d = current;
+    const here = () => current?.id === d.id;
+    adding = d.id;
+    evidenceError = null;
+    paintEvidence();
+    let added = false;
+    try {
+      for (const f of files) {
+        if (!(await looksLikePdf(f))) {
+          evidenceError = "That file isn't a PDF.";
+          break;
+        }
+        await postFile(`/api/disputes/${encodeURIComponent(d.id)}/documents?name=${encodeURIComponent(f.name)}`, f);
+        added = true;
+      }
+    } catch (e) {
+      if (here()) evidenceError = uploadErrorText(e);
+    }
+    if (added && here()) {
+      // the new read and score; if this fails the old ones stay and the next open shows the card
+      const s = await api<Score>(`/api/disputes/${encodeURIComponent(d.id)}/score`).catch(() => null);
+      if (s && here()) score = s;
+    }
+    adding = null;
+    if (here()) {
+      paintBody();
+      paintHeader(); // the score can cross the fight line, which moves the dark pill
+      document.getElementById("add-evidence-btn")?.focus();
+      void refreshAudit(); // its "Document added" line
+    }
+    if (added) opts.onSubmitted(); // the grid row's and the phone card's win chance
+  }
 
   /** Recorded (from this session or the audit trail on open): the banner. Otherwise the line, the action and any error. */
   function renderInvoice(): string {
@@ -544,7 +621,7 @@ export function createDetail(opts: { onClose: (id: string) => void; onSubmitted:
     const docLine = score.documents.some((d) => d.evidence.source === "recorded");
     body.innerHTML = `
       <section aria-labelledby="h-score"><h3 id="h-score">Win probability</h3>${renderScore(score)}</section>
-      <section aria-labelledby="h-evidence"><h3 id="h-evidence">Extracted evidence</h3>${renderEvidence(score, current?.currency ?? null)}${docLine ? line : ""}</section>
+      <section aria-labelledby="h-evidence"><div id="evidence-box" class="drop" data-drop>${renderEvidenceBox(score)}</div></section>
       <section aria-labelledby="h-invoice"><h3 id="h-invoice">PayPal invoice</h3><div id="invoice-box" aria-live="polite">${renderInvoice()}</div></section>
       <section aria-labelledby="h-dossier"><h3 id="h-dossier">Dossier preview</h3>${renderDossier(score, docLine ? "" : line)}</section>
       <section aria-labelledby="h-audit"><h3 id="h-audit">Audit trail</h3><div id="audit-list">${renderAudit(audit)}</div></section>`;
@@ -616,6 +693,37 @@ export function createDetail(opts: { onClose: (id: string) => void; onSubmitted:
   }
 
   button.addEventListener("click", () => void submit());
+  // the evidence box is redrawn with the body and after each upload, so listen on the body
+  const dropZone = (ev: Event) => (ev.target as Element).closest<HTMLElement>("[data-drop]");
+  body.addEventListener("click", (ev) => {
+    if ((ev.target as Element).closest("#add-evidence-btn")) document.getElementById("evidence-file")?.click();
+  });
+  body.addEventListener("change", (ev) => {
+    const input = ev.target as HTMLInputElement;
+    if (input.id !== "evidence-file") return;
+    const files = Array.from(input.files ?? []);
+    input.value = ""; // the same file can be picked again
+    void addFiles(files);
+  });
+  for (const type of ["dragenter", "dragover"]) {
+    body.addEventListener(type, (ev) => {
+      const zone = dropZone(ev);
+      if (!zone) return;
+      ev.preventDefault(); // allows the drop
+      zone.classList.add("is-over");
+    });
+  }
+  body.addEventListener("dragleave", (ev) => {
+    const zone = dropZone(ev);
+    if (zone && !zone.contains((ev as DragEvent).relatedTarget as Node | null)) zone.classList.remove("is-over");
+  });
+  body.addEventListener("drop", (ev) => {
+    const zone = dropZone(ev);
+    if (!zone) return;
+    ev.preventDefault();
+    zone.classList.remove("is-over");
+    void addFiles(Array.from((ev as DragEvent).dataTransfer?.files ?? []));
+  });
   // the invoice button is redrawn with the body, so listen on the body
   body.addEventListener("click", (ev) => {
     if ((ev.target as Element).closest("#invoice-btn")) void recordInvoice();
@@ -678,6 +786,7 @@ export function createDetail(opts: { onClose: (id: string) => void; onSubmitted:
       acted = null;
       invoice = null;
       invoiceError = null;
+      evidenceError = null;
       closeSteps();
       result.innerHTML = "";
       delete result.dataset.shown;

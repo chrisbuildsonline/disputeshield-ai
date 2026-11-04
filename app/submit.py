@@ -11,7 +11,7 @@ from fastapi import APIRouter, BackgroundTasks, HTTPException, Query, Request
 from fastapi.concurrency import run_in_threadpool
 from pydantic import BaseModel, Field, ValidationError
 
-from app import autopilot, demo, llm, paypal, scorecard, store
+from app import auth, autopilot, demo, llm, paypal, scorecard, store
 from app.dossier import _validate_files, build_dossier
 from app.extract import MAX_PDF_BYTES, ExtractedEvidence, extract
 from app.scoring import ACCEPT_BELOW, FIGHT_AT, recommend, score
@@ -286,6 +286,7 @@ def _invoice_response(rec: dict[str, Any], *, already: bool) -> dict[str, Any]:
         "demo": demo_mode,
         "source": rec["source"],
         "label": DEMO_LABEL if demo_mode else INVOICE_LABEL,
+        "simulated_case": bool(rec.get("simulated_case")),
         "status": rec["status"],
         "invoice_id": rec["invoice_id"],
         "invoice_number": rec["invoice_number"],
@@ -306,8 +307,8 @@ def _invoice_response(rec: dict[str, Any], *, already: bool) -> dict[str, Any]:
 async def paypal_invoice(dispute_id: str) -> dict[str, Any]:
     """Record the disputed order as a PayPal invoice: evidence of an agreed sale, and a small score factor.
 
-    Live (a PayPal dispute with keys): creates a draft invoice in the sandbox and reads it back. A simulated
-    dispute gets a fixed fixture labelled "demo". The first result is kept; asking again returns it.
+    Live (a PayPal dispute with keys, or a simulated one with demo mode off, keys and the sandbox base): creates a
+    draft invoice in the sandbox and reads it back. Any other simulated dispute gets a fixed fixture labelled "demo". The first result is kept; asking again returns it.
     """
     d = _require_dispute(dispute_id)
     stored = store.invoice_records().get(dispute_id)
@@ -327,7 +328,10 @@ async def paypal_invoice(dispute_id: str) -> dict[str, Any]:
         raise HTTPException(422, f"can't invoice this dispute: {e}") from None
     buyer = d["resource"].get("buyer")
     recipient = buyer.get("name") if isinstance(buyer, dict) and isinstance(buyer.get("name"), str) else None
-    mode = "paypal" if d["source"] == "paypal" else "demo"
+    # Invoicing needs no buyer, so a simulated case can still make a real sandbox call. Never with demo mode on,
+    # without keys, or against a non-sandbox base: those keep the fixture.
+    simulated_live = d["source"] != "paypal" and not auth.demo_mode() and _has_paypal_keys() and paypal.is_sandbox()
+    mode = "paypal" if d["source"] == "paypal" or simulated_live else "demo"
     if mode == "demo":
         rec = demo.invoice_fixture(dispute_id, item, total, recipient)
     else:
@@ -341,7 +345,7 @@ async def paypal_invoice(dispute_id: str) -> dict[str, Any]:
     before = score(row, scorecard.merge(evs)).probability
     after = score(row, scorecard.merge(evs, True)).probability
     rec = {**rec, "mode": mode, "source": "live sandbox" if mode == "paypal" else "demo",
-           "score_before": before, "score_after": after}
+           "simulated_case": simulated_live, "score_before": before, "score_after": after}
     # ponytail: two clicks at once could create two sandbox drafts; the first audit row wins
     store.add_audit(dispute_id, store.INVOICE_ACTION, rec)
     return _invoice_response(rec, already=False)

@@ -14,7 +14,7 @@ docker build -t disputeshield .
 docker run --rm -p 127.0.0.1:8000:8000 disputeshield
 ```
 
-Then open http://localhost:8000 and click **Open demo console**. Demo mode lets anyone who can reach the port in (sandbox only, so the line above publishes it on this machine alone); `-e DISPUTESHIELD_DEMO_MODE=0` turns it off for real use.
+Then open http://localhost:8000 and click **Open demo console**. In demo mode anyone who can reach the port can open the console; the command above publishes it on this machine only. `-e DISPUTESHIELD_DEMO_MODE=0` turns demo mode off for real use.
 
 ## Why it matters
 

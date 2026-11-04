@@ -249,6 +249,19 @@ def test_prompt_asks_for_currency_codes() -> None:
     assert json.loads(ds._facts(Dispute(reason=INR, amount="9.00", currency="EUR"), [], score(DISPUTE, to_evidence(_sample_evidence()[0]))))["dispute_currency"] == "EUR"
 
 
+def test_template_note_says_signed_by() -> None:
+    evs = _sample_evidence()
+    note = template_note(DISPUTE, evs, score(DISPUTE, to_evidence(evs[0])))
+    assert "Signed by J Smith." in note
+    assert "signed for" not in note.lower()
+
+
+def test_recorded_sample_note_says_signed_by() -> None:
+    text = (Path(__file__).parent.parent / "samples" / "recorded.json").read_text()
+    assert "signed for by" not in text.lower()
+    assert "signed by J Smith" in text
+
+
 def test_template_passes_fact_check_on_samples() -> None:
     evs = _sample_evidence()
     note = template_note(DISPUTE, evs, score(DISPUTE, to_evidence(evs[0])))

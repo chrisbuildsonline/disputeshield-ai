@@ -123,7 +123,7 @@ def test_autopilot_off_good_score_is_awaiting_not_flagged(client: TestClient) ->
     assert client.get(f"/api/disputes/{did}").json()["status"] == "OPEN"
     log = audit(client, did)
     assert not [a for a in log if a["action"] == "autopilot_flagged"]
-    assert [a["detail"] for a in log if a["action"] == "autopilot_awaiting"] == [{"probability": 100, "threshold": 85}]
+    assert [a["detail"] for a in log if a["action"] == "autopilot_awaiting"] == [{"probability": 100, "threshold": 85, "autopilot_off": True}]
     assert "autopilot_submitted" not in actions(client, did)
     assert row(client, did)["review_reasons"] is None
 
@@ -243,3 +243,23 @@ def test_already_submitted_is_skipped(client: TestClient) -> None:
 def test_unknown_dispute_never_raises() -> None:
     """Given an id that does not exist, when autopilot runs, then it returns quietly."""
     asyncio.run(autopilot.run("NOPE"))
+
+
+def test_audit_steps_are_marked_with_autopilot_off(client: TestClient) -> None:
+    """Given autopilot off and no documents, when the agent runs, then every row says autopilot was off,
+    so the console can write "Waiting for review" instead of "Autopilot started"."""
+    e = created_event()
+    did = e["resource"]["dispute_id"]
+    assert client.post("/api/webhooks/paypal", json=e).status_code == 200
+    asyncio.run(autopilot.run(did))
+    rows = [a for a in audit(client, did) if a["action"].startswith("autopilot_")]
+    assert {a["action"] for a in rows} >= {"autopilot_flagged", *STEPS}
+    assert all(a["detail"].get("autopilot_off") is True for a in rows)
+
+
+def test_audit_steps_unmarked_with_autopilot_on(client: TestClient) -> None:
+    """Given autopilot on, when a chargeback arrives, then the wording rows carry no off marker."""
+    configure(client, True)
+    did = simulate(client)
+    rows = [a for a in audit(client, did) if a["action"].startswith("autopilot_")]
+    assert rows and not [a for a in rows if "autopilot_off" in a["detail"]]

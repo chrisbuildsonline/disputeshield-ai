@@ -26,7 +26,7 @@
     },
     "a96585b307daad246de2282fb9e001ac350e2431e1ca3ad6b527af42642f8d07": {
       "model": "qwen3:8b",
-      "note": "We received the order with ID A-1042 for USD 49.90. The item was shipped via UPS with tracking number 1Z999AA10123456784. It was delivered on 2026-10-01 10:00:00 to 12 High Street, Leeds LS1 4AB. The package was signed for by J Smith. The delivery matches the order amount and billing address. We met all the required factors. Please rule in our favor.",
+      "note": "We received the order with ID A-1042 for USD 49.90. The item was shipped via UPS with tracking number 1Z999AA10123456784. It was delivered on 2026-10-01 10:00:00 to 12 High Street, Leeds LS1 4AB. The package was signed by J Smith. The delivery matches the order amount and billing address. We met all the required factors. Please rule in our favor.",
       "recorded_at": "2026-10-31T18:41:22Z",
       "scenario": "leeds"
     }

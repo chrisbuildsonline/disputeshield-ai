@@ -33,8 +33,13 @@ def enabled() -> bool:
     return bool(store.get_autopilot()["enabled"])
 
 
+def _off() -> dict[str, bool]:
+    """Rows written while autopilot is off carry a marker: the console words them "Waiting for review"."""
+    return {} if enabled() else {"autopilot_off": True}
+
+
 def _flag(dispute_id: str, *reasons: str) -> None:
-    store.add_audit(dispute_id, "autopilot_flagged", {"reasons": list(reasons)})
+    store.add_audit(dispute_id, "autopilot_flagged", {"reasons": list(reasons), **_off()})
 
 
 def _http_reason(e: HTTPException) -> str:
@@ -66,7 +71,7 @@ async def _run(dispute_id: str) -> None:
         store.add_audit(dispute_id, "autopilot_skipped", {"reason": "closed, already submitted or waiting for the buyer"})
         return
     settings = store.get_autopilot()
-    store.add_audit(dispute_id, "autopilot_started", {"source": d["source"]})
+    store.add_audit(dispute_id, "autopilot_started", {"source": d["source"], **_off()})
 
     if d["source"] == "paypal" and _has_paypal_keys():  # ponytail: sync doesn't start the agent
         try:
@@ -81,10 +86,10 @@ async def _run(dispute_id: str) -> None:
     evs = [ExtractedEvidence.model_validate(x["evidence"]) for x in docs]
     merged = scorecard.merge(evs)
     fields = [k for k in ("carrier", "tracking_number", "delivered_at", "delivered_to", "signed_by", "order_id", "amount") if getattr(merged, k)]
-    store.add_audit(dispute_id, "autopilot_evidence", {"documents": len(docs), "fields": fields})
+    store.add_audit(dispute_id, "autopilot_evidence", {"documents": len(docs), "fields": fields, **_off()})
     result = score(scorecard.to_dispute(d, scorecard.billing_of(d["resource"])), merged)
     store.add_audit(
-        dispute_id, "autopilot_scored", {"probability": result.probability, "threshold": settings["threshold"]}
+        dispute_id, "autopilot_scored", {"probability": result.probability, "threshold": settings["threshold"], **_off()}
     )
 
     if not docs:
@@ -97,7 +102,7 @@ async def _run(dispute_id: str) -> None:
         )
     elif not settings["enabled"]:  # nothing wrong: the person just hasn't sent it yet
         store.add_audit(
-            dispute_id, "autopilot_awaiting", {"probability": result.probability, "threshold": settings["threshold"]}
+            dispute_id, "autopilot_awaiting", {"probability": result.probability, "threshold": settings["threshold"], **_off()}
         )
     else:
         try:

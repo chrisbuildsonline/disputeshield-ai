@@ -239,7 +239,7 @@ def template_note(dispute: Dispute, evidence: list[ExtractedEvidence], result: S
     elif to:
         out.append(f"Delivery address on file: {to}.")
     if signer:
-        out.append(f"Signed for by {signer}.")
+        out.append(f"Signed by {signer}.")
     if any(_clean(m) for e in evidence for m in e.customer_messages):
         out.append("Buyer correspondence is on file.")
     met = [f.label for f in result.factors if f.met]

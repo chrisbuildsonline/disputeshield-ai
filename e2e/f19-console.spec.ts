@@ -130,7 +130,7 @@ test("the audit trail says the auto-check is waiting, and only real flags show N
   const banner = flagged.locator("#detail-flag .banner");
   await expect(banner).toContainText("Needs review");
   await expect(banner).toContainText("Win probability 79% is below the 85% threshold");
-  await expect(flagged.locator(".audit li", { hasText: /Autopilot flagged for review: Win probability 79% is below the 85% threshold/ })).toBeVisible();
+  await expect(flagged.locator(".audit li", { hasText: /Waiting for review: Win probability 79% is below the 85% threshold/ })).toBeVisible();
   await expect(flagged.locator(".audit li", { hasText: /flagged for review: Waiting for you to review/ })).toHaveCount(0);
   await page.screenshot({ path: `${SHOTS}/f19-desktop-flagged.png` });
   expect(errors).toEqual([]);

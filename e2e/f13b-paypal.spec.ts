@@ -137,11 +137,12 @@ test("a weak case recommends accepting, and accepting needs a confirm step", asy
   const id = await webhookDispute(request, "MERCHANDISE_OR_SERVICE_NOT_RECEIVED"); // no documents: 9%
   const { row, detail } = await openDispute(page, id);
 
-  await expect(detail.getByLabel("Win probability 9 percent")).toBeVisible();
+  await expect(detail.getByLabel("Win probability not scored yet")).toHaveText("—"); // no documents: no number, like the grid
   const pill = detail.locator(".rec-pill");
   await expect(pill).toHaveText("Accept");
   await expect(pill).toHaveClass(/badge-red/);
-  await expect(detail.getByText("A 9% chance of winning is below 30%, so accepting the claim costs less than fighting.")).toBeVisible();
+  await expect(detail.getByText("No evidence yet, so there is no score. Upload a receipt to see how strong the case is.")).toBeVisible();
+  await expect(detail.locator(".rec-reason")).not.toContainText("%");
 
   const accept = detail.getByRole("button", { name: "Accept claim" });
   const offer = detail.getByRole("button", { name: "Offer refund" });

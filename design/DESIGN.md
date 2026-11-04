@@ -66,6 +66,14 @@ DOM. Success hides after 10s; errors stay until dismissed. A Dismiss button clos
     neutral after); body is a quiet button with that case's amount (28px) and reason + id (id in
     the indigo accent); it opens the case.
   - Empty values are an em dash, counts are 0. Never "null", "NaN" or a blank card.
+  - **F25, phone (up to 700px):** *Money at risk* shows the first currency as the one main total
+    (26px/800) and a muted 13px "+N currencies" native `<details>` under it that opens the rest at
+    16px; the desktop strip is unchanged and lists every currency. *Next deadline*'s reason line
+    wraps instead of cutting off with an ellipsis.
+  - **F25, one win chance everywhere:** a case with no documents has no score, so the grid, the phone
+    card and the case sheet all show a muted em dash. In the sheet it is the 40px "—" with the muted
+    line "Upload evidence to score" beside it (no bar); the rulebook baseline is not shown as a
+    percentage. The number appears in all three once evidence is added.
 - **Money** (ref 3): `Intl.NumberFormat` in the dispute's own currency (en-US): `€128.00`,
   `£86.40`, `NOK 1,299.00`. Whole units in ink 700; the decimals and a multi-letter code muted 500,
   so a column of amounts reads by magnitude. Right-aligned, tabular figures.
@@ -142,7 +150,7 @@ footer status line are hidden; the status stays for screen readers). The page ca
   (24px 20px on a phone), `min(440px, 100% - 24px)` wide, centred on the canvas both ways.
 - **Anatomy**: 36px indigo-tint tile with the shield mark + "DisputeShield AI" 15px/700; title
   28px/800, -0.025em, balanced wrap; one muted 15px line on what the console is.
-- **Demo mode** (`/api/config` returns a `demo_token`): title "No operator token needed", then
+- **Demo mode** (`/api/config` returns a `demo_token`): title "Open the operator console", then
   "Open demo console" as the one dark pill, full width; it stores the token and opens the console.
   Under it a muted 13px note: sandbox only, anyone who can reach the port can open it, and
   `DISPUTESHIELD_DEMO_MODE=0` (inset code chip) turns it off. The paste form follows under a hairline

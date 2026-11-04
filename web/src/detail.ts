@@ -50,8 +50,21 @@ const FIELDS: [keyof Evidence, string][] = [
   ["amount", "Order amount"],
 ];
 
+/** With autopilot off the agent only checks the case: the trail says a person is needed, not that an autopilot ran. */
 function auditText(a: AuditRow): string {
   const d = a.detail;
+  if (d.autopilot_off === true) {
+    switch (a.action) {
+      case "autopilot_flagged":
+        return `Waiting for review: ${Array.isArray(d.reasons) ? d.reasons.map(String).join("; ") : ""}`;
+      case "autopilot_started":
+        return "Checking the case";
+      case "autopilot_evidence":
+        return `Checked ${String(d.documents ?? 0)} document(s)`;
+      case "autopilot_scored":
+        return `Scored the case ${String(d.probability)}%`;
+    }
+  }
   switch (a.action) {
     case "simulated_chargeback":
       return "Chargeback received (simulated)";
@@ -163,12 +176,20 @@ function renderScore(score: Score): string {
     )
     .join("");
   const [recLabel, recTone] = REC[score.recommendation.action];
-  return `<div class="score">
+  // no documents: the grid and the phone card show a dash, so the sheet does too (the rulebook's 9% is only a baseline)
+  const unscored = score.documents.length === 0;
+  const head = unscored
+    ? `<div class="score score-none">
+      <div class="score-num muted" aria-label="Win probability not scored yet">&mdash;</div>
+      <p class="score-hint muted">Upload evidence to score</p>
+    </div>`
+    : `<div class="score">
       <div class="score-num ${tone}" aria-label="Win probability ${score.probability} percent">${score.probability}%</div>
       <div class="score-bar" aria-hidden="true"><span class="${tone}" data-band="${band}" style="width:${score.probability}%"></span></div>
-    </div>
+    </div>`;
+  return `${head}
     <div class="rec"><span class="rec-label">Recommended</span><span class="badge rec-pill ${recTone}">${recLabel}</span>
-      <p class="rec-reason muted">${esc(score.recommendation.reason)}</p></div>
+      <p class="rec-reason muted">${esc(unscored ? "No evidence yet, so there is no score. Upload a receipt to see how strong the case is." : score.recommendation.reason)}</p></div>
     <ul class="factors"><li class="factor base"><span class="mark" aria-hidden="true">&#8226;</span>
       <span class="factor-text"><span>Starting point</span><span class="muted">Baseline for this kind of dispute</span></span>
       <span class="points">${score.base}</span></li>${factors}</ul>`;

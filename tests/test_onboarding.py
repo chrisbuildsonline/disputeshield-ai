@@ -120,6 +120,10 @@ def test_dockerfile_turns_demo_mode_on_by_default() -> None:
     assert re.search(r"(?m)^ENV\b.*\bDISPUTESHIELD_DEMO_MODE=1\b", DOCKERFILE)
 
 
+def test_dockerfile_pins_uv_to_a_version() -> None:
+    assert re.search(r"(?m)^COPY --from=ghcr\.io/astral-sh/uv:\d+\.\d+\.\d+ ", DOCKERFILE)
+
+
 def test_compose_passes_host_port_to_the_app() -> None:
     assert "HOST_PORT: ${HOST_PORT:-8000}" in COMPOSE
 

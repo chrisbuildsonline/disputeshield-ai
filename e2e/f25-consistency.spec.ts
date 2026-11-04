@@ -26,8 +26,8 @@ test.afterEach(async ({ request }) => {
 });
 
 /** An open webhook dispute with no documents, due first so it sits at the top of the grid. */
-async function bareCase(request: APIRequestContext, tag: string): Promise<string> {
-  await request.put("/api/autopilot", { data: { enabled: false, threshold: 85 } });
+async function bareCase(request: APIRequestContext, tag: string, autopilot = false): Promise<string> {
+  await request.put("/api/autopilot", { data: { enabled: autopilot, threshold: 85 } });
   const id = `PP-D-F25${tag}${Date.now().toString(36).toUpperCase()}`;
   const res = await request.post("/api/webhooks/paypal", {
     data: {
@@ -75,7 +75,7 @@ for (const [name, size] of [["desktop", DESKTOP], ["phone", MOBILE]] as const) {
   test(`${name}: the sheet shows the same win chance as the list, a dash with no documents`, async ({ page, request }) => {
     const errors = watchErrors(page);
     await page.setViewportSize(size);
-    const id = await bareCase(request, name === "phone" ? "P" : "D");
+    const id = await bareCase(request, name === "phone" ? "P" : "D", true); // autopilot on, so the agent runs and writes the trail
     await page.goto("/#token=e2e-token");
     await expect(page.locator(name === "phone" ? "#cards .case-card" : ".ag-row").first()).toBeVisible();
     expect(await listWin(page, id)).toBe("—");
@@ -86,6 +86,9 @@ for (const [name, size] of [["desktop", DESKTOP], ["phone", MOBILE]] as const) {
     await expect(score).toContainText("Upload evidence to score");
     await expect(sheet.locator(".score-bar")).toHaveCount(0);
     await expect(sheet.locator(".score-num", { hasText: "%" })).toHaveCount(0);
+    await expect(sheet.locator(".audit li", { hasText: /flagged for review: No evidence documents/ })).toBeVisible();
+    await expect(sheet.locator(".audit li", { hasText: /scored the case/i })).toHaveCount(0);
+    await request.put("/api/autopilot", { data: { enabled: false, threshold: 85 } }); // the upload below must never send
     await page.screenshot({ path: `${SHOTS}/f25-sheet-dash-${size.width}.png` });
     await sheet.getByRole("button", { name: /Close/ }).click();
 

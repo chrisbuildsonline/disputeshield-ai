@@ -95,8 +95,8 @@ for (const [name, size] of [["desktop", DESKTOP], ["phone", MOBILE]] as const) {
     expect(up.ok(), await up.text()).toBeTruthy();
     await page.reload();
     await expect(page.locator(name === "phone" ? "#cards .case-card" : ".ag-row").first()).toBeVisible();
+    await expect.poll(() => listWin(page, id)).toMatch(/^\d+%$/); // the cell fills in just after the row appears
     const listed = await listWin(page, id);
-    expect(listed).toMatch(/^\d+%$/);
     const sheet2 = await openCase(page, id);
     await expect(sheet2.locator(".score-num")).toHaveText(listed);
     await page.screenshot({ path: `${SHOTS}/f25-sheet-scored-${size.width}.png` });
@@ -111,6 +111,8 @@ for (const [name, size] of [["desktop", DESKTOP], ["phone", MOBILE]] as const) {
     const gate = page.locator("#token-gate");
     await expect(gate.getByRole("heading", { name: "Open the operator console", level: 2 })).toBeVisible();
     await expect(gate.getByText("No operator token needed")).toHaveCount(0);
+    await expect(gate.locator(".gate-lede")).toHaveText("The operator console for PayPal chargebacks: each case scored from its evidence, ready to send.");
+    await expect(gate.getByText("every case scored", { exact: false })).toHaveCount(0);
     const demo = gate.getByRole("button", { name: "Open demo console" });
     await expect(demo).toBeVisible();
     await expect(demo).toHaveClass(/btn-primary/);

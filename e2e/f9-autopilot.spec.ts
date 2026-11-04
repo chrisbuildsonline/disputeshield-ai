@@ -39,7 +39,27 @@ test("autopilot sends a chargeback on its own, and leaves the next one for revie
   await expect.poll(async () => (await page.request.get("/api/autopilot")).json()).toEqual({ enabled: true, threshold: 85 });
   const sentId = await simulate(page);
   const sent = page.locator(`.ag-row[row-id="${sentId}"]`);
-  await expect(sent.locator('[col-id="status"]')).toHaveText("Under review", { timeout: 15000 }); // the grid repaints on its next poll
+  // a sent case drops below every open one, and on a long list that is past the rows the grid draws: wait for the
+  // server, let the next poll move the row, then scroll down to it
+  await expect.poll(async () => ((await (await page.request.get("/api/disputes")).json()) as { id: string; status: string }[]).find((d) => d.id === sentId)?.status).toBe("UNDER_REVIEW");
+  await expect
+    .poll(
+      () =>
+        page.locator("#grid").evaluate((grid, id) => {
+          const row = grid.querySelector(`.ag-row[row-id="${id}"]`);
+          if (row) return row.querySelector('[col-id="status"]')?.textContent?.trim() ?? "";
+          // not drawn: find the element that scrolls the rows and look further down, from the top again at the end
+          let v: Element | null = grid.querySelector(".ag-row[row-id]")?.parentElement ?? null;
+          while (v && v !== grid && !(v.scrollHeight > v.clientHeight + 1 && /auto|scroll/.test(getComputedStyle(v).overflowY))) v = v.parentElement;
+          if (v && v !== grid) {
+            const atEnd = v.scrollTop + v.clientHeight >= v.scrollHeight - 1;
+            v.scrollTo(0, atEnd ? 0 : v.scrollTop + v.clientHeight / 2);
+          }
+          return "";
+        }, sentId),
+      { timeout: 15000 },
+    )
+    .toBe("Under review"); // the grid repaints on its next poll
   await expect(sent).toHaveClass(/row-submitted/);
   const detail = page.getByRole("dialog", { name: `Dispute ${sentId}` });
   await sent.locator('[col-id="reason"]').click();

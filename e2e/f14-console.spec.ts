@@ -134,7 +134,9 @@ test("sample disputes fill the grid and the KPI strip", async ({ page, request }
   await expect(page.locator("#kpi-win-bar")).toHaveAttribute("data-band", "fight"); // 61%: the average moved into the fight band
   const due = kpi(page, "deadline");
   const pill = due.locator(".badge");
-  await expect(pill).toHaveText(/^Due in 29 h$/); // 30 h from now, counted down to the whole hour like the row
+  await expect(pill).toHaveText(/^1d [45]h left$/); // 30 h from now, the same countdown words as the row
+  const rowLeft = await page.locator(`.ag-row[row-id="${seededBy("NOK", "1299.00").id}"] [col-id="due"] .badge-red`).innerText();
+  expect((await pill.innerText()).trim()).toBe(rowLeft.trim());
   await expect(pill).toHaveClass(/badge-red/);
   await expect(due).toContainText("NOK 1,299.00");
   await page.screenshot({ path: `${SHOTS}/f14-desktop.png` });

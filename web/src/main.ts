@@ -320,11 +320,6 @@ async function whileBusy<T>(work: () => Promise<T>): Promise<T> {
 // ---- KPI strip: totals over the open cases, from /api/summary. The tiles are in the page; a poll only changes what moved ----
 const DASH = "—";
 
-function dueText(hours: number): string {
-  if (hours <= 0) return "Overdue";
-  return hours < 48 ? `Due in ${Math.floor(hours)} h` : `Due in ${Math.floor(hours / 24)} d`;
-}
-
 const kpiLink = byId<HTMLButtonElement>("kpi-link");
 
 function paintKpis(s: Summary): void {
@@ -348,9 +343,12 @@ function paintKpis(s: Summary): void {
       ? `<summary>+${rest.length} ${rest.length === 1 ? "currency" : "currencies"}</summary><ul>${rest.map((m) => `<li>${moneyHtml(m.value, m.currency)}</li>`).join("")}</ul>`
       : "",
   );
-  text(
+  // a phone already says "+N currencies" under the total, so its foot drops the count
+  put(
     byId("kpi-risk-foot"),
-    s.at_risk.length ? `in ${s.at_risk.length} ${s.at_risk.length === 1 ? "currency" : "currencies"}, open cases only` : "nothing at stake",
+    s.at_risk.length
+      ? `<span class="foot-n">in ${s.at_risk.length} ${s.at_risk.length === 1 ? "currency" : "currencies"}, </span>open cases only`
+      : "nothing at stake",
   );
 
   const bar = byId("kpi-win-bar");
@@ -371,11 +369,11 @@ function paintKpis(s: Summary): void {
   // from the due date itself, so the pill and the row's countdown agree to the hour
   const hours = Number.isNaN(Date.parse(next.due)) ? next.hours_left : (Date.parse(next.due) - Date.now()) / 3600000;
   const tone = hours < 48 ? "badge-red" : hours < 96 ? "badge-amber" : "badge-muted";
-  put(byId("kpi-due-pill"), badge(dueText(hours), tone));
+  put(byId("kpi-due-pill"), badge(timeLeft(next.due).text, tone)); // the grid's own countdown, so the words always match
   const d = rows.find((r) => r.id === next.dispute_id);
   if (kpiLink.dataset.id !== next.dispute_id) kpiLink.dataset.id = next.dispute_id;
   put(byId("kpi-link-amount"), d ? moneyHtml(d.amount_value, d.currency) : esc(next.dispute_id));
-  text(byId("kpi-link-reason"), d ? `${reasonLabel(d.reason)} · ` : "");
+  text(byId("kpi-link-reason"), d ? reasonLabel(d.reason) : "");
   text(byId("kpi-link-id"), next.dispute_id);
 }
 

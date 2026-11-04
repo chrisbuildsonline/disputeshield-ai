@@ -39,7 +39,7 @@ test("autopilot sends a chargeback on its own, and leaves the next one for revie
   await expect.poll(async () => (await page.request.get("/api/autopilot")).json()).toEqual({ enabled: true, threshold: 85 });
   const sentId = await simulate(page);
   const sent = page.locator(`.ag-row[row-id="${sentId}"]`);
-  await expect(sent.locator('[col-id="status"]')).toHaveText("Under review");
+  await expect(sent.locator('[col-id="status"]')).toHaveText("Under review", { timeout: 15000 }); // the grid repaints on its next poll
   await expect(sent).toHaveClass(/row-submitted/);
   const detail = page.getByRole("dialog", { name: `Dispute ${sentId}` });
   await sent.locator('[col-id="reason"]').click();

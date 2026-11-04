@@ -154,6 +154,18 @@ def test_autopilot_off_without_documents_is_flagged(client: TestClient) -> None:
     assert "autopilot_awaiting" not in actions(client, did)
 
 
+@pytest.mark.parametrize("enabled", [False, True])
+def test_no_documents_writes_no_score_row(client: TestClient, enabled: bool) -> None:
+    """Given a case with no evidence documents, when the agent runs, then it is flagged and no win % is logged."""
+    configure(client, enabled)
+    e = created_event()
+    did = e["resource"]["dispute_id"]
+    assert client.post("/api/webhooks/paypal", json=e).status_code == 200
+    asyncio.run(autopilot.run(did))
+    assert "autopilot_scored" not in actions(client, did)
+    assert "autopilot_flagged" in actions(client, did)
+
+
 def test_awaiting_clears_an_earlier_flag(client: TestClient) -> None:
     """Given a case flagged for no documents, when a receipt is uploaded with autopilot off and it scores well,
     then the old flag clears on its own: the upload reruns the check, which never sends while autopilot is off."""
@@ -253,7 +265,7 @@ def test_audit_steps_are_marked_with_autopilot_off(client: TestClient) -> None:
     assert client.post("/api/webhooks/paypal", json=e).status_code == 200
     asyncio.run(autopilot.run(did))
     rows = [a for a in audit(client, did) if a["action"].startswith("autopilot_")]
-    assert {a["action"] for a in rows} >= {"autopilot_flagged", *STEPS}
+    assert {a["action"] for a in rows} >= {"autopilot_flagged", *STEPS[:2]}  # no documents: no scored row
     assert all(a["detail"].get("autopilot_off") is True for a in rows)
 
 

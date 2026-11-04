@@ -88,9 +88,10 @@ async def _run(dispute_id: str) -> None:
     fields = [k for k in ("carrier", "tracking_number", "delivered_at", "delivered_to", "signed_by", "order_id", "amount") if getattr(merged, k)]
     store.add_audit(dispute_id, "autopilot_evidence", {"documents": len(docs), "fields": fields, **_off()})
     result = score(scorecard.to_dispute(d, scorecard.billing_of(d["resource"])), merged)
-    store.add_audit(
-        dispute_id, "autopilot_scored", {"probability": result.probability, "threshold": settings["threshold"], **_off()}
-    )
+    if docs:  # no documents, no win %: the sheet shows a dash, so the audit trail must not print a number
+        store.add_audit(
+            dispute_id, "autopilot_scored", {"probability": result.probability, "threshold": settings["threshold"], **_off()}
+        )
 
     if not docs:
         _flag(dispute_id, "No evidence documents")

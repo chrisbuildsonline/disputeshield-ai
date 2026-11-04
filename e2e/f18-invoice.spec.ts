@@ -25,9 +25,6 @@ interface InvoiceJson {
   invoice_number: string;
   debug_id: string | null;
   fields: { total: { currency_code: string; value: string } };
-  score_before: number;
-  score_after: number;
-  score_changed: boolean;
   already_recorded: boolean;
 }
 
@@ -56,7 +53,7 @@ async function seed(request: APIRequestContext): Promise<Row[]> {
 const probability = async (request: APIRequestContext, id: string) =>
   ((await (await request.get(`/api/disputes/${id}/score`)).json()) as { probability: number }).probability;
 
-/** A fresh seeded case with room under 100%, so the invoice factor moves its score. */
+/** A fresh seeded case with room under 100%, where a score bump would show if the invoice caused one. */
 async function caseWithRoom(request: APIRequestContext): Promise<{ id: string; before: number }> {
   for (const d of await seed(request)) {
     const p = await probability(request, d.id);
@@ -103,7 +100,7 @@ async function openCase(page: Page, id: string): Promise<Locator> {
 
 const invoiceBanner = (panel: Locator) => panel.locator("#invoice-box .banner");
 
-test("record a seeded case as a PayPal invoice: demo banner, score change, factor, audit row, grid, reload", async ({ page, request }) => {
+test("record a seeded case as a PayPal invoice: demo banner, score unchanged, no factor, audit row, grid, reload", async ({ page, request }) => {
   const errors = watchErrors(page);
   const { id, before } = await caseWithRoom(request);
   await page.goto("/#token=e2e-token");
@@ -134,23 +131,24 @@ test("record a seeded case as a PayPal invoice: demo banner, score change, facto
   await btn.dblclick();
   await expect(panel.getByRole("button", { name: /Recording/ })).toBeDisabled();
   const r = (await (await answered).json()) as InvoiceJson;
-  expect([r.demo, r.label, r.already_recorded, r.score_before]).toEqual([true, DEMO, false, before]);
-  expect(r.score_after).toBeGreaterThan(before);
+  expect([r.demo, r.label, r.already_recorded]).toEqual([true, DEMO, false]);
 
   const banner = invoiceBanner(panel);
   await expect(banner).toContainText(DEMO);
   await expect(banner).toContainText(r.invoice_number);
   await expect(banner).toContainText(r.invoice_id);
   await expect(banner).toContainText(money(r.fields.total));
-  await expect(banner).toContainText(`Win probability ${before}% → ${r.score_after}%`);
+  await expect(banner).not.toContainText("→");
+  await expect(banner).not.toContainText("Win probability");
   await expect(banner).toBeFocused();
   await expect(panel.getByRole("button", { name: ACTION })).toHaveCount(0);
   expect(posts).toBe(1);
 
-  // the score, its factors and the grid row follow without a reload
-  await expect(panel.locator(".score-num")).toHaveText(`${r.score_after}%`);
-  await expect(panel.locator(".factor.met", { hasText: FACTOR })).toBeVisible();
-  await expect(page.locator(`.ag-row[row-id="${id}"] [col-id="win"]`)).toHaveText(`${r.score_after}%`);
+  // a draft we made ourselves is not evidence: the score, its factors and the grid row stay as they were
+  await expect(panel.locator(".score-num")).toHaveText(`${before}%`);
+  await expect(panel.locator(".factor", { hasText: FACTOR })).toHaveCount(0);
+  await expect(page.locator(`.ag-row[row-id="${id}"] [col-id="win"]`)).toHaveText(`${before}%`);
+  expect(await probability(request, id)).toBe(before);
   const row = panel.locator(".audit li", { hasText: `Demo: invoice fixture ${r.invoice_number} recorded, nothing sent to PayPal` });
   await expect(row).toBeVisible();
   await page.screenshot({ path: `${SHOTS}/f18-desktop-recorded.png` });
@@ -168,7 +166,8 @@ test("record a seeded case as a PayPal invoice: demo banner, score change, facto
   await expect(invoiceBanner(reopened)).toContainText(DEMO);
   await expect(invoiceBanner(reopened)).toContainText(r.invoice_number);
   await expect(reopened.getByRole("button", { name: ACTION })).toHaveCount(0);
-  await expect(reopened.locator(".factor.met", { hasText: FACTOR })).toBeVisible();
+  await expect(reopened.locator(".factor", { hasText: FACTOR })).toHaveCount(0);
+  await expect(reopened.locator(".score-num")).toHaveText(`${before}%`);
   await expect(reopened.locator(".audit li", { hasText: "Demo: invoice fixture" })).toHaveCount(1);
   expect(errors).toEqual([]);
 });
@@ -225,7 +224,7 @@ test("a live sandbox record reads as recorded on PayPal, with its debug id, in t
     mode: "paypal", demo: false, source: "live sandbox", label: "Recorded on PayPal sandbox", simulated_case: true, status: "DRAFT",
     invoice_id: "INV2-ABCD-EFGH-IJKL-MNOP", invoice_number: "0042", debug_id: "f1e2d3c4b5a69", lookup_debug_id: "a1b2c3d4e5f60",
     fields: { invoice_id: "INV2-ABCD-EFGH-IJKL-MNOP", invoice_number: "0042", status: "DRAFT", total, item: "Order 1001", recipient: null, verified: true },
-    score_before: 79, score_after: 83, score_changed: true, already_recorded: false,
+    already_recorded: false,
   };
   await page.route("**/api/disputes/*/paypal-invoice", (route) => route.fulfill({ json: live }));
   await page.goto("/#token=e2e-token");
@@ -239,7 +238,7 @@ test("a live sandbox record reads as recorded on PayPal, with its debug id, in t
   await expect(banner).toContainText("INV2-ABCD-EFGH-IJKL-MNOP");
   await expect(banner).toContainText(money(total));
   await expect(banner).toContainText("debug id f1e2d3c4b5a69");
-  await expect(banner).toContainText("Win probability 79% → 83%");
+  await expect(banner).not.toContainText("→");
   await expect(banner).toContainText("Simulated case · invoice call live on sandbox");
   await banner.evaluate((b) => b.scrollIntoView({ block: "center" }));
   await page.screenshot({ path: `${SHOTS}/f18-desktop-live.png` });
@@ -248,7 +247,7 @@ test("a live sandbox record reads as recorded on PayPal, with its debug id, in t
   await page.route(`**/api/disputes/${c.id}/audit`, async (route) => {
     const res = await route.fetch();
     const rows = (await res.json()) as unknown[];
-    rows.push({ id: 9_999_998, action: "invoice_recorded", detail: { ...live.fields, mode: "paypal", source: "live sandbox", debug_id: live.debug_id, score_before: 79, score_after: 83 }, at: new Date().toISOString() });
+    rows.push({ id: 9_999_998, action: "invoice_recorded", detail: { ...live.fields, mode: "paypal", source: "live sandbox", debug_id: live.debug_id }, at: new Date().toISOString() });
     await route.fulfill({ response: res, json: rows });
   });
   await page.reload();
@@ -289,7 +288,8 @@ test.describe("phone", () => {
     // focusing the result scrolls the panel body only: the sheet itself never slides up under the phone's top edge
     expect(await panel.evaluate((p) => p.scrollTop)).toBe(0);
     await expect(banner).toBeInViewport();
-    await expect(banner).toContainText(new RegExp(`Win probability ${before}% → \\d+%`));
+    await expect(banner).not.toContainText("→");
+    await expect(panel.locator(".score-num")).toHaveText(`${before}%`);
     const b = (await banner.boundingBox())!;
     expect(b.x).toBeGreaterThanOrEqual(0);
     expect(b.x + b.width).toBeLessThanOrEqual(MOBILE.width);

@@ -245,27 +245,28 @@ def test_demo_dispute_gets_a_labelled_fixture_and_no_http(client: TestClient) ->
     assert body["status"] == "DRAFT"
     assert body["fields"]["total"] == {"currency_code": "EUR", "value": "128.00"}
     assert body["already_recorded"] is False
-    assert body["score_changed"] is True
-    assert body["score_after"] > body["score_before"]
-    assert body["score_before"] == 79
+    assert not any(k.startswith("score") for k in body)
     after = {x["id"]: x["win_probability"] for x in client.get("/api/disputes").json()}
-    assert after[d["id"]] == body["score_after"]
-    assert {x["id"]: x["win_probability"] for x in before}[d["id"]] == 79
+    assert after[d["id"]] == {x["id"]: x["win_probability"] for x in before}[d["id"]] == 79
     last = actions(client, d["id"])[-1]
     assert last["action"] == "invoice_recorded"
     assert last["detail"]["source"] == "demo"
     assert last["detail"]["invoice_id"] == body["invoice_id"]
-    assert last["detail"]["score_after"] == body["score_after"]
+    assert not any(k.startswith("score") for k in last["detail"])
 
 
-def test_a_dispute_already_at_100_is_recorded_without_changing_the_score(client: TestClient) -> None:
-    d = seed_demo(client)[0]  # leeds, 100
-    body = client.post(f"/api/disputes/{d['id']}/paypal-invoice").json()
-    assert (body["score_before"], body["score_after"], body["score_changed"]) == (100, 100, False)
-    assert body["invoice_id"].startswith("DEMO-INV-")
+@pytest.mark.parametrize("n", range(5))
+def test_recording_an_invoice_never_changes_the_score(client: TestClient, n: int) -> None:
+    d = seed_demo(client)[n]
+    plain = client.get(f"/api/disputes/{d['id']}/score").json()
+    grid = {x["id"]: x["win_probability"] for x in client.get("/api/disputes").json()}[d["id"]]
+    assert client.post(f"/api/disputes/{d['id']}/paypal-invoice").status_code == 200
     score = client.get(f"/api/disputes/{d['id']}/score").json()
-    assert score["probability"] == 100
+    assert score["probability"] == plain["probability"] == grid
+    assert score["factors"] == plain["factors"]
+    assert score["base"] == plain["base"]
     assert not any("nvoice" in f["label"] for f in score["factors"])
+    assert {x["id"]: x["win_probability"] for x in client.get("/api/disputes").json()}[d["id"]] == grid
 
 
 def test_demo_fixture_is_deterministic_and_repeat_is_idempotent(client: TestClient) -> None:
@@ -274,20 +275,16 @@ def test_demo_fixture_is_deterministic_and_repeat_is_idempotent(client: TestClie
     again = client.post(f"/api/disputes/{d['id']}/paypal-invoice").json()
     assert again["already_recorded"] is True
     assert again["invoice_id"] == first["invoice_id"]
-    assert again["score_after"] == first["score_after"]
     assert [a["action"] for a in actions(client, d["id"])].count("invoice_recorded") == 1
 
 
-def test_score_route_lists_the_invoice_factor_only_after_recording(client: TestClient) -> None:
-    d = seed_demo(client)[4]  # madrid, 25
-    before = client.get(f"/api/disputes/{d['id']}/score").json()["factors"]
-    assert not any("nvoice" in f["label"] for f in before)
-    client.post(f"/api/disputes/{d['id']}/paypal-invoice")
-    score = client.get(f"/api/disputes/{d['id']}/score").json()
-    inv = [f for f in score["factors"] if "nvoice" in f["label"]]
-    assert len(inv) == 1 and inv[0]["met"] is True
-    assert score["probability"] == score["base"] + sum(f["points"] for f in score["factors"])
-    assert score["probability"] == 25 + inv[0]["weight"]
+def test_demo_fixture_invoice_stays_out_of_the_dossier_note(client: TestClient) -> None:
+    d = seed_demo(client)[1]
+    before = client.get(f"/api/disputes/{d['id']}/score").json()["dossier"]
+    body = client.post(f"/api/disputes/{d['id']}/paypal-invoice").json()
+    after = client.get(f"/api/disputes/{d['id']}/score").json()["dossier"]
+    assert after["note"] == before["note"]
+    assert "Order record" not in after["note"] and body["invoice_number"] not in after["note"]
 
 
 def test_paypal_dispute_without_keys_is_409(client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:

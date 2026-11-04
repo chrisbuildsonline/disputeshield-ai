@@ -158,15 +158,12 @@ def list_disputes() -> list[dict[str, Any]]:
     evidence = store.evidence_by_dispute()
     rows = store.list_disputes()
     reasons = store.review_reasons()
-    invoiced = store.invoice_records()
     for row in rows:
         row["review_reasons"] = reasons.get(row["id"])
         docs = evidence.get(row["id"])
         billing = row.pop("billing_address")
         row["win_probability"] = (
-            scorecard.score_dispute(
-                row, billing, [ExtractedEvidence.model_validate(x) for x in docs], row["id"] in invoiced
-            ).probability
+            scorecard.score_dispute(row, billing, [ExtractedEvidence.model_validate(x) for x in docs]).probability
             if docs
             else None
         )

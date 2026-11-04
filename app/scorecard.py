@@ -8,7 +8,7 @@ from app.scoring import Dispute, Evidence, ScoreResult, score
 BILLING_KEY = "buyer_billing_address"  # set on simulated disputes; real PayPal disputes don't carry one
 
 
-def merge(evs: list[ExtractedEvidence], invoice: bool = False) -> Evidence:
+def merge(evs: list[ExtractedEvidence]) -> Evidence:
     def pick(field: str) -> str | None:
         return next((v for e in evs if (v := getattr(e, field))), None)
 
@@ -21,7 +21,6 @@ def merge(evs: list[ExtractedEvidence], invoice: bool = False) -> Evidence:
         order_id=pick("order_id"),
         amount=pick("amount"),
         customer_messages=tuple(m for e in evs for m in e.customer_messages),
-        invoice_on_file=True if invoice else None,
     )
 
 
@@ -34,10 +33,8 @@ def to_dispute(row: dict[str, Any], billing_address: str | None) -> Dispute:
     )
 
 
-def score_dispute(
-    row: dict[str, Any], billing_address: str | None, evs: list[ExtractedEvidence], invoice: bool = False
-) -> ScoreResult:
-    return score(to_dispute(row, billing_address), merge(evs, invoice))
+def score_dispute(row: dict[str, Any], billing_address: str | None, evs: list[ExtractedEvidence]) -> ScoreResult:
+    return score(to_dispute(row, billing_address), merge(evs))
 
 
 def billing_of(resource: dict[str, Any]) -> str | None:

@@ -86,6 +86,15 @@ def audit(dispute_id: str) -> list[dict[str, Any]]:
 _PREVIEWS: dict[tuple[Any, ...], dict[str, Any]] = {}  # dossier previews, see score_preview
 
 
+def _order_record(dispute_id: str) -> str | None:
+    """The dossier line for a real recorded PayPal invoice; the demo fixture is not evidence of anything."""
+    for a in store.list_audit(dispute_id):
+        d = a["detail"]
+        if a["action"] == store.INVOICE_ACTION and d.get("mode") == "paypal":
+            return f"Order record: PayPal invoice {d['invoice_id']} ({str(d['status']).lower()}, created {a['at'][:10]})."
+    return None
+
+
 @router.get("/api/disputes/{dispute_id}/score")
 async def score_preview(dispute_id: str) -> dict[str, Any]:
     """Score breakdown plus the dossier the submit would send.
@@ -97,16 +106,18 @@ async def score_preview(dispute_id: str) -> dict[str, Any]:
     docs = store.list_documents(dispute_id, with_data=True)
     evs = [ExtractedEvidence.model_validate(x["evidence"]) for x in docs]
     dispute = scorecard.to_dispute(d, scorecard.billing_of(d["resource"]))
-    result = score(dispute, scorecard.merge(evs, dispute_id in store.invoice_records()))
+    result = score(dispute, scorecard.merge(evs))
+    order_record = _order_record(dispute_id)
     key = (
         dispute_id, d["reason"], d["amount_value"], tuple((x["name"], x["created_at"]) for x in docs), llm.provider(),
-        dispute_id in store.invoice_records(),
+        order_record,
     )
     preview = _PREVIEWS.get(key)
     if preview is None:
         try:
             dossier = await run_in_threadpool(
-                build_dossier, dispute, evs, result, [(x["name"], x["data"]) for x in docs], use_llm=_use_llm()
+                build_dossier, dispute, evs, result, [(x["name"], x["data"]) for x in docs],
+                use_llm=_use_llm(), order_record=order_record,
             )
         except ValueError as e:
             raise HTTPException(422, str(e)) from None
@@ -194,9 +205,10 @@ async def send_evidence(dispute_id: str) -> dict[str, Any]:
     try:
         evs = [ExtractedEvidence.model_validate(x["evidence"]) for x in docs]
         dispute = scorecard.to_dispute(d, scorecard.billing_of(d["resource"]))
-        result = score(dispute, scorecard.merge(evs, dispute_id in store.invoice_records()))
+        result = score(dispute, scorecard.merge(evs))
         dossier = await run_in_threadpool(
-            build_dossier, dispute, evs, result, [(x["name"], x["data"]) for x in docs], use_llm=_use_llm()
+            build_dossier, dispute, evs, result, [(x["name"], x["data"]) for x in docs],
+            use_llm=_use_llm(), order_record=_order_record(dispute_id),
         )
         dossier_input = dossier.input
         status, response = UNDER_REVIEW, None
@@ -296,16 +308,13 @@ def _invoice_response(rec: dict[str, Any], *, already: bool) -> dict[str, Any]:
             k: rec[k]
             for k in ("invoice_id", "invoice_number", "status", "total", "item", "recipient", "verified")
         },
-        "score_before": rec["score_before"],
-        "score_after": rec["score_after"],
-        "score_changed": rec["score_after"] != rec["score_before"],
         "already_recorded": already,
     }
 
 
 @router.post("/api/disputes/{dispute_id}/paypal-invoice")
 async def paypal_invoice(dispute_id: str) -> dict[str, Any]:
-    """Record the disputed order as a PayPal invoice: evidence of an agreed sale, and a small score factor.
+    """Record the disputed order as a PayPal invoice. A real (sandbox) draft is listed in the dossier note; it never moves the score.
 
     Live (a PayPal dispute with keys, or a simulated one with demo mode off, keys and the sandbox base): creates a
     draft invoice in the sandbox and reads it back. Any other simulated dispute gets a fixed fixture labelled "demo". The first result is kept; asking again returns it.
@@ -318,7 +327,6 @@ async def paypal_invoice(dispute_id: str) -> dict[str, Any]:
         raise HTTPException(409, NO_KEYS)
     docs = store.list_documents(dispute_id)
     evs = [ExtractedEvidence.model_validate(x["evidence"]) for x in docs]
-    row = scorecard.to_dispute(d, scorecard.billing_of(d["resource"]))
     order_id = scorecard.merge(evs).order_id
     item = f"Order {order_id}" if order_id else f"Disputed order for case {dispute_id}"
     total = {"currency_code": str(d["currency"] or "USD"), "value": str(d["amount_value"] or "").strip()}
@@ -342,10 +350,8 @@ async def paypal_invoice(dispute_id: str) -> dict[str, Any]:
             raise HTTPException(
                 502, {"message": str(e), "paypal_name": e.name, "debug_id": e.debug_id}
             ) from None
-    before = score(row, scorecard.merge(evs)).probability
-    after = score(row, scorecard.merge(evs, True)).probability
     rec = {**rec, "mode": mode, "source": "live sandbox" if mode == "paypal" else "demo",
-           "simulated_case": simulated_live, "score_before": before, "score_after": after}
+           "simulated_case": simulated_live}
     # ponytail: two clicks at once could create two sandbox drafts; the first audit row wins
     store.add_audit(dispute_id, store.INVOICE_ACTION, rec)
     return _invoice_response(rec, already=False)

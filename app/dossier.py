@@ -19,7 +19,7 @@ from typing import Any, Literal
 
 from app import llm, recorded
 from app.extract import DEFAULT_MODEL, ExtractedEvidence
-from app.scoring import INR, INVOICE_LABEL, Dispute, ScoreResult
+from app.scoring import INR, Dispute, ScoreResult
 
 logger = logging.getLogger(__name__)
 
@@ -266,16 +266,14 @@ _PROMPT = (
 )
 
 
-def _facts(
-    dispute: Dispute, evidence: list[ExtractedEvidence], result: ScoreResult, *, exclude: tuple[str, ...] = ()
-) -> str:
+def _facts(dispute: Dispute, evidence: list[ExtractedEvidence], result: ScoreResult) -> str:
     return json.dumps(
         {
             "dispute_reason": dispute.reason,
             "dispute_amount": str(dispute.amount),
             "dispute_currency": dispute.currency,
             "evidence": [e.model_dump(exclude={"source", "model"}, exclude_none=True) for e in evidence],
-            "met_factors": [f.label for f in result.factors if f.met and f.label not in exclude],
+            "met_factors": [f.label for f in result.factors if f.met],
         },
         ensure_ascii=False,
     )
@@ -323,8 +321,8 @@ def _choose_note(
         except Exception as e:
             why.append(f"{name} note failed: {type(e).__name__}: {str(e)[:200]}")
         logger.warning("using recorded or template note: %s", why[-1])
-    # same facts, same hash: a note the model wrote for this exact case (recorded before any invoice was on file)
-    entry = recorded.note(_facts(dispute, evs, result, exclude=(INVOICE_LABEL,)))
+    # same facts, same hash: a note the model wrote for this exact case
+    entry = recorded.note(_facts(dispute, evs, result))
     if entry:
         text = _truncate(entry["note"])
         bad = fact_check(text, dispute, evs)
@@ -344,13 +342,20 @@ def build_dossier(
     documents: list[tuple[str, bytes]] | tuple[tuple[str, bytes], ...] = (),
     *,
     use_llm: bool = True,
+    order_record: str | None = None,
 ) -> Dossier:
-    """Build the provide-evidence request. Raises ValueError only for bad attachments."""
+    """Build the provide-evidence request. Raises ValueError only for bad attachments.
+
+    order_record is one line appended after the note (never sent to the model, never fact-checked), so a
+    recorded note keeps matching its facts hash.
+    """
     files = [(n, bytes(d)) for n, d in documents]
     _validate_files(files)
     pairs = _tracking(evidence)
     fulfilment = dispute.reason == INR and any(c for c, _ in pairs)
     note, source, model, why = _choose_note(dispute, evidence, result, use_llm)
+    if order_record:
+        note = f"{_truncate(note, MAX_NOTES - len(order_record) - 1)} {order_record}"
     ev: dict[str, Any] = {"evidence_type": "PROOF_OF_FULFILLMENT" if fulfilment else "OTHER", "notes": note}
     if pairs:
         ev["evidence_info"] = {"tracking_info": [_tracking_info(c, tn) for c, tn in pairs]}

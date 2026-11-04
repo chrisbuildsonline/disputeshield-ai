@@ -3,6 +3,7 @@
 import os
 import subprocess
 import sys
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -44,6 +45,20 @@ def test_seeded_case_is_recorded_live_on_sandbox_when_demo_is_off(client: TestCl
     assert (body["invoice_id"], body["debug_id"]) == (LIVE_REC["invoice_id"], "dbg-create")
     assert len(calls) == 1
     assert actions(client, did)[-1]["detail"]["simulated_case"] is True
+
+
+def test_a_real_recorded_invoice_is_listed_as_the_order_record_in_the_dossier(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    did, _ = seeded_then(client, monkeypatch)
+    plain = client.get(f"/api/disputes/{did}/score").json()
+    client.post(f"/api/disputes/{did}/paypal-invoice")
+    after = client.get(f"/api/disputes/{did}/score").json()
+    today = datetime.now(UTC).date().isoformat()
+    line = f"Order record: PayPal invoice {LIVE_REC['invoice_id']} (draft, created {today})."
+    assert after["dossier"]["note"] == f"{plain['dossier']['note']} {line}"
+    assert after["dossier"]["note_source"] == plain["dossier"]["note_source"]
+    assert after["probability"] == plain["probability"]
 
 
 def test_a_real_paypal_dispute_is_not_marked_simulated(client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:

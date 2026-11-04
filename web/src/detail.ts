@@ -203,8 +203,6 @@ interface InvoiceView {
   id: string;
   total: Money | null;
   debugId: string | null;
-  before: number | null;
-  after: number | null;
   already: boolean;
 }
 
@@ -216,14 +214,11 @@ function invoiceFromResult(r: InvoiceResult): InvoiceView {
     id: r.invoice_id,
     total: r.fields.total,
     debugId: r.debug_id,
-    before: r.score_before,
-    after: r.score_after,
     already: r.already_recorded,
   };
 }
 
 function invoiceFromAudit(d: Record<string, unknown>): InvoiceView {
-  const num = (v: unknown) => (typeof v === "number" ? v : null);
   const total = d.total as Money | undefined;
   return {
     demo: d.mode !== "paypal",
@@ -232,8 +227,6 @@ function invoiceFromAudit(d: Record<string, unknown>): InvoiceView {
     id: String(d.invoice_id ?? ""),
     total: total && typeof total === "object" ? total : null,
     debugId: typeof d.debug_id === "string" ? d.debug_id : null,
-    before: num(d.score_before),
-    after: num(d.score_after),
     already: false,
   };
 }
@@ -244,7 +237,6 @@ function renderInvoiceBanner(v: InvoiceView): string {
     `${v.demo ? "Demo invoice" : "Draft invoice"} ${esc(v.number)}${total ? ` · ${esc(total)}` : ""}${v.demo ? "" : " · not sent to the buyer"}`,
     `Invoice id <span class="mono">${esc(v.id)}</span>${v.debugId ? ` · debug id <span class="mono">${esc(v.debugId)}</span>` : ""}`,
   ];
-  if (v.before !== null && v.after !== null && v.after !== v.before) lines.push(`Win probability ${v.before}% → ${v.after}%`);
   if (v.already) lines.push("Recorded earlier: nothing new was created.");
   if (v.simulated) lines.push(`<span class="banner-note">Simulated case · invoice call live on sandbox</span>`);
   const title = v.demo ? DEMO_LABEL : "Recorded on PayPal sandbox";
@@ -443,7 +435,7 @@ export function createDetail(opts: { onClose: (id: string) => void; onSubmitted:
       ok = true;
       if (current?.id === d.id) {
         invoice = invoiceFromResult(r);
-        // the new factor and score; if this read fails the old score stays and the banner still says what changed
+        // the score is unchanged, but the dossier note now lists a real invoice as the order record
         const s = await api<Score>(`/api/disputes/${encodeURIComponent(d.id)}/score`).catch(() => null);
         if (s && current?.id === d.id) score = s;
       }

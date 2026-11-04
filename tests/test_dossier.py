@@ -55,6 +55,26 @@ def test_payload_schema_for_sample_evidence() -> None:
     assert set(d.input) == {"evidences"}
 
 
+def test_order_record_line_is_appended_and_the_note_stays_within_the_limit() -> None:
+    line = "Order record: PayPal invoice INV2-AAAA (draft, created 2026-11-04)."
+    evs = _sample_evidence()
+    result = score(DISPUTE, to_evidence(evs[0]))
+    plain = build_dossier(DISPUTE, evs, result, use_llm=False).input["evidences"][0]["notes"]
+    note = build_dossier(DISPUTE, evs, result, use_llm=False, order_record=line).input["evidences"][0]["notes"]
+    assert note == f"{plain} {line}"
+    assert build_dossier(DISPUTE, evs, result, use_llm=False, order_record=None).input["evidences"][0]["notes"] == plain
+
+
+def test_order_record_line_survives_a_note_at_the_limit(monkeypatch: pytest.MonkeyPatch) -> None:
+    line = "Order record: PayPal invoice INV2-AAAA (draft, created 2026-11-04)."
+    monkeypatch.setattr(ds, "template_note", lambda *a: "We shipped it. " * 200)
+    evs = _sample_evidence()
+    note = build_dossier(DISPUTE, evs, score(DISPUTE, to_evidence(evs[0])), use_llm=False, order_record=line).input[
+        "evidences"
+    ][0]["notes"]
+    assert len(note) <= MAX_NOTES and note.endswith(line)
+
+
 def test_no_documents_key_when_no_files() -> None:
     assert "documents" not in _build().input["evidences"][0]
 

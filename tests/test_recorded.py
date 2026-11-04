@@ -187,16 +187,18 @@ def test_recorded_note_used_when_live_note_fails(rec: Path, monkeypatch: pytest.
 
 @pytest.mark.usefixtures("shipped")
 @pytest.mark.parametrize("s", demo.SCENARIOS, ids=lambda s: s.key)
-def test_recorded_note_survives_an_invoice_on_file(s: demo.Scenario) -> None:
+def test_recorded_note_stays_valid_with_an_order_record_line(s: demo.Scenario) -> None:
     r = demo.resource(s)
     d = scorecard.to_dispute(
         {"reason": s.reason, "amount_value": s.value, "currency": s.currency}, scorecard.billing_of(r)
     )
     evs = [extract((SAMPLES / n).read_bytes(), use_llm=False) for n in s.docs]
-    plain = ds.build_dossier(d, evs, score(d, scorecard.merge(evs)), use_llm=False)
-    with_inv = score(d, scorecard.merge(evs, True))
-    dossier = ds.build_dossier(d, evs, with_inv, use_llm=False)
+    result = score(d, scorecard.merge(evs))
+    plain = ds.build_dossier(d, evs, result, use_llm=False)
+    line = "Order record: PayPal invoice INV2-AAAA (draft, created 2026-11-04)."
+    dossier = ds.build_dossier(d, evs, result, use_llm=False, order_record=line)
     assert (dossier.note_source, dossier.note_model) == (plain.note_source, plain.note_model) == ("recorded", plain.note_model)
+    assert dossier.input["evidences"][0]["notes"] == f"{plain.input['evidences'][0]['notes']} {line}"
 
 
 @pytest.mark.usefixtures("shipped")
@@ -204,11 +206,11 @@ def test_score_route_keeps_the_recorded_note_after_invoice(tmp_path: Path, monke
     monkeypatch.setenv("DISPUTESHIELD_DB", str(tmp_path / "t.db"))
     monkeypatch.setenv("DISPUTESHIELD_DEMO_MODE", "1")
     c = TestClient(app)
-    d = c.post("/api/demo/seed").json()["disputes"][4]  # madrid, below 100 so the invoice factor applies
+    d = c.post("/api/demo/seed").json()["disputes"][4]  # madrid
     before = c.get(f"/api/disputes/{d['id']}/score").json()
     assert c.post(f"/api/disputes/{d['id']}/paypal-invoice").status_code == 200
     after = c.get(f"/api/disputes/{d['id']}/score").json()
-    assert any("nvoice" in f["label"] for f in after["factors"])
+    assert after["factors"] == before["factors"]
     assert before["dossier"]["note_source"] == after["dossier"]["note_source"] == "recorded"
     assert before["dossier"]["note_model"] == after["dossier"]["note_model"]
 

@@ -79,7 +79,7 @@ async def _run(dispute_id: str) -> None:
 
     docs = store.list_documents(dispute_id, with_data=True)
     evs = [ExtractedEvidence.model_validate(x["evidence"]) for x in docs]
-    merged = scorecard.merge(evs, dispute_id in store.invoice_records())
+    merged = scorecard.merge(evs)
     fields = [k for k in ("carrier", "tracking_number", "delivered_at", "delivered_to", "signed_by", "order_id", "amount") if getattr(merged, k)]
     store.add_audit(dispute_id, "autopilot_evidence", {"documents": len(docs), "fields": fields})
     result = score(scorecard.to_dispute(d, scorecard.billing_of(d["resource"])), merged)

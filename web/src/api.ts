@@ -109,8 +109,6 @@ export interface InvoiceResult {
   invoice_number: string;
   debug_id: string | null;
   fields: { total: Money };
-  score_before: number;
-  score_after: number;
   already_recorded: boolean;
 }
 

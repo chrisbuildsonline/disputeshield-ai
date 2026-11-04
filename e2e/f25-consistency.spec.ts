@@ -17,8 +17,12 @@ function watchErrors(page: Page): string[] {
   return errors;
 }
 
+const made: string[] = [];
+
+// close the cases made here so they leave the top of the grid for the specs that run after this one
 test.afterEach(async ({ request }) => {
   await request.put("/api/autopilot", { data: { enabled: false, threshold: 85 } });
+  for (const id of made.splice(0)) await request.post(`/api/disputes/${id}/accept`);
 });
 
 /** An open webhook dispute with no documents, due first so it sits at the top of the grid. */
@@ -39,6 +43,7 @@ async function bareCase(request: APIRequestContext, tag: string): Promise<string
     },
   });
   expect(res.ok(), await res.text()).toBeTruthy();
+  made.push(id);
   return id;
 }
 
@@ -161,4 +166,63 @@ test("desktop: the KPI strip still lists every currency, with no fold", async ({
   await expect(page.locator("#kpi-risk li:visible")).toHaveCount(n);
   await expect(page.locator("#kpi-more")).toBeHidden();
   await page.screenshot({ path: `${SHOTS}/f25-kpis-1440.png` });
+});
+
+// ---- review round 2 ----
+
+test("the KPI deadline pill counts down in the same words as the grid and the phone card", async ({ page, request }) => {
+  await bareCase(request, "T");
+  const id = ((await (await request.get("/api/summary")).json()) as { next_deadline: { dispute_id: string } }).next_deadline.dispute_id;
+  await page.goto("/#token=e2e-token");
+  const pill = page.locator("#kpi-due-pill .badge");
+  const gridText = async () => (await page.locator(`.ag-row[row-id="${id}"] [col-id="due"] .two-line > :first-child`).innerText()).trim();
+  await expect(pill).toHaveText(/left$/);
+  expect((await pill.innerText()).trim()).toBe(await gridText());
+  await page.setViewportSize(MOBILE);
+  const card = page.locator(`#cards .case-card[data-id="${id}"] .cc-due .two-line > :first-child`);
+  await expect(card).toBeVisible();
+  expect((await pill.innerText()).trim()).toBe((await card.innerText()).trim());
+  await expect(pill).not.toContainText("Due in");
+});
+
+test("phone: the dispute id in the deadline card never breaks, and the money foot does not repeat itself", async ({ page, request }) => {
+  await page.setViewportSize(MOBILE);
+  await bareCase(request, "W");
+  let s = (await (await request.get("/api/summary")).json()) as { at_risk: unknown[]; next_deadline: { dispute_id: string } };
+  if (s.at_risk.length < 2) {
+    expect((await request.post("/api/demo/seed")).ok()).toBeTruthy();
+    s = (await (await request.get("/api/summary")).json()) as typeof s;
+  }
+  const id = s.next_deadline.dispute_id;
+  await page.goto("/#token=e2e-token");
+  const idEl = page.locator("#kpi-link-id");
+  await expect(idEl).toHaveText(id);
+  expect(await idEl.evaluate((n) => n.getClientRects().length)).toBe(1);
+  expect(await idEl.evaluate((n) => getComputedStyle(n).whiteSpace)).toBe("nowrap");
+  await expect(page.locator("#kpi-risk-foot")).toHaveText("open cases only", { useInnerText: true });
+  await page.setViewportSize(DESKTOP);
+  await expect(page.locator("#kpi-risk-foot")).toHaveText(/^in \d+ currenc(y|ies), open cases only$/);
+});
+
+test("the unscored sheet reads as one block: a big muted dash with the hint under it", async ({ page, request }) => {
+  const id = await bareCase(request, "B");
+  await page.goto("/#token=e2e-token");
+  const sheet = await openCase(page, id);
+  const num = sheet.locator(".score-num");
+  const hint = sheet.locator(".score-hint");
+  await expect(num).toHaveText("—");
+  const style = await num.evaluate((n) => ({ size: getComputedStyle(n).fontSize, weight: getComputedStyle(n).fontWeight }));
+  expect(style).toEqual({ size: "40px", weight: "800" });
+  const [a, b] = [await num.boundingBox(), await hint.boundingBox()];
+  expect(b!.y).toBeGreaterThanOrEqual(a!.y + a!.height - 4);
+  expect(b!.x - a!.x).toBeLessThan(24);
+  expect(a!.width).toBeLessThan(200);
+  await page.screenshot({ path: `${SHOTS}/f25-sheet-dash-1440.png` });
+});
+
+test("the page subtitle does not claim every case is scored", async ({ page }) => {
+  await page.goto("/#token=e2e-token");
+  const sub = page.locator("#page-sub");
+  await expect(sub).toContainText("Open cases first, then by due date.");
+  await expect(sub).not.toContainText("Every one is scored");
 });

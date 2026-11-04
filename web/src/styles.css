@@ -1414,13 +1414,32 @@ kbd {
 }
 
 .score-none {
-  flex-wrap: wrap;
-  gap: 4px 16px;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+}
+
+.score-none .score-num {
+  min-width: 0;
+  line-height: 1.1;
 }
 
 .score-hint {
   margin: 0;
   font-size: 14px;
+}
+
+#kpi-link-reason:not(:empty)::after {
+  content: " · ";
+}
+
+#kpi-link-id {
+  display: inline-block;
+  max-width: 100%;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  vertical-align: bottom;
 }
 
 .score-num {
@@ -1897,7 +1916,19 @@ kbd {
     white-space: normal;
     overflow: visible;
     text-overflow: clip;
-    overflow-wrap: anywhere;
+  }
+
+  /* the reason wraps; the id sits on its own line and is never broken */
+  #kpi-link-reason::after {
+    content: none;
+  }
+
+  #kpi-link-id {
+    display: block;
+  }
+
+  #kpi-risk-foot .foot-n {
+    display: none;
   }
 
   .kpi-top {

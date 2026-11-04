@@ -62,7 +62,7 @@ DOM. Success hides after 10s; errors stay until dismissed. A Dismiss button clos
     rate we can stand behind). Up to two currencies at 26px side by side; three or more drop to a
     2-column grid at 18px (stacked on a phone). Foot: "in 4 currencies, open cases only".
   - *Average win chance*: "59%" and a 6px bar tinted by score band (see Score bands).
-  - *Next deadline*: urgency pill top-right ("Due in 29 h": red under 48 h, amber under 96 h,
+  - *Next deadline*: urgency pill top-right ("1d 5h left" or "5m left", the grid's own countdown text: red under 48 h, amber under 96 h,
     neutral after); body is a quiet button with that case's amount (28px) and reason + id (id in
     the indigo accent); it opens the case.
   - Empty values are an em dash, counts are 0. Never "null", "NaN" or a blank card.

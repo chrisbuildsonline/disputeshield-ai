@@ -58,6 +58,12 @@ The console works on a phone too:
 
 These screenshots come from `bun run readme:shots`, which drives the real console with qwen3:8b on.
 
+A real call to the PayPal sandbox, with demo mode off:
+
+![The case panel after Record as PayPal invoice: Recorded on PayPal sandbox, the INV2 invoice, PayPal's debug id and a note that the case is simulated](docs/screenshots/invoice-sandbox.png)
+
+Live here: the OAuth token, Invoicing v2 create draft invoice and the read back, all on the sandbox. The dispute itself is a seeded simulation (a sandbox dispute needs a sandbox buyer). Reproduce it with `bun run paypal:invoice` (needs the sandbox keys in `.env`; it refuses any other `PAYPAL_API_BASE`).
+
 ## Quick start (no keys)
 
 You need Docker with Compose.

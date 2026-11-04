@@ -58,7 +58,9 @@ async function closeCase(panel: Locator): Promise<void> {
 }
 
 async function scoreOf(request: APIRequestContext, id: string): Promise<ScoreJson> {
-  return (await (await request.get(`/api/disputes/${id}/score`)).json()) as ScoreJson;
+  const s = (await (await request.get(`/api/disputes/${id}/score`)).json()) as ScoreJson;
+  s.dossier = (await (await request.get(`/api/disputes/${id}/dossier`)).json()) as ScoreJson["dossier"];
+  return s;
 }
 
 const noteBadge = (panel: Locator) => panel.locator("#h-dossier ~ .card .card-head .badge");
@@ -136,8 +138,13 @@ test("a live model read shows the plain AI badge and no recorded line", async ({
     const res = await route.fetch();
     const s = (await res.json()) as ScoreJson;
     for (const d of s.documents) d.evidence.source = "ollama";
-    s.dossier.note_source = "ollama";
     await route.fulfill({ response: res, json: s });
+  });
+  await page.route("**/api/disputes/*/dossier", async (route) => {
+    const res = await route.fetch();
+    const n = (await res.json()) as ScoreJson["dossier"];
+    n.note_source = "ollama";
+    await route.fulfill({ response: res, json: n });
   });
   const s = await scoreOf(request, ids.walkthrough);
   expect(s.documents[0].evidence.source).toBe("recorded");

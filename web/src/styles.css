@@ -1286,6 +1286,16 @@ kbd {
   margin-top: 24px;
 }
 
+.note-pending {
+  margin: 0;
+}
+
+.note-pending .spinner {
+  display: inline-block;
+  margin-right: 8px;
+  vertical-align: -2px;
+}
+
 .card {
   border-radius: 14px;
   background: var(--inset);

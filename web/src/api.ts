@@ -8,6 +8,7 @@ export interface Dispute {
   outcome: string | null;
   source: string;
   win_probability: number | null;
+  doc_count?: number;
   review_reasons: string[] | null;
 }
 
@@ -66,7 +67,14 @@ export interface Score {
   base: number;
   factors: Factor[];
   documents: ScoreDoc[];
-  dossier: { note: string; note_source: "ollama" | "claude" | "recorded" | "template"; note_model?: string | null; files: string[] };
+}
+
+/** The rebuttal note and attachments the submit would send; a model may write the note, so it comes apart from the score. */
+export interface Dossier {
+  note: string;
+  note_source: "ollama" | "claude" | "recorded" | "template";
+  note_model?: string | null;
+  files: string[];
 }
 
 export interface AuditRow {

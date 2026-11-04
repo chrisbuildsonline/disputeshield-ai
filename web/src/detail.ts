@@ -10,6 +10,7 @@ import {
   type ActResult,
   type AuditRow,
   type Dispute,
+  type Dossier,
   type Evidence,
   type InvoiceResult,
   type Money,
@@ -132,12 +133,12 @@ function sourceBadge(source: string, model?: string | null): string {
 }
 
 /** One quiet line per panel when anything in it was recorded rather than read live. */
-function recordedLine(score: Score): string {
+function recordedLine(score: Score, dossier: Dossier | null): string {
   const docs = score.documents.filter((d) => d.evidence.source === "recorded");
-  const note = score.dossier.note_source === "recorded";
+  const note = dossier?.note_source === "recorded";
   if (!docs.length && !note) return "";
   // the read and the note can come from different models: name each one that was used
-  const models = [...new Set([...docs.map((d) => d.evidence.model), note ? score.dossier.note_model : null].filter((m): m is string => !!m))];
+  const models = [...new Set([...docs.map((d) => d.evidence.model), note ? dossier.note_model : null].filter((m): m is string => !!m))];
   const runs = models.length > 1 ? `real ${models.map(esc).join(" and ")} runs` : `a real ${esc(models[0] ?? "model")} run`;
   const pdfs = docs.length === 1 ? "this exact PDF" : docs.length ? "these exact PDFs" : "";
   const what = note ? (pdfs ? `${pdfs} and these case facts` : "these exact case facts") : pdfs;
@@ -196,8 +197,14 @@ function renderScore(score: Score): string {
 }
 
 /** The recorded line sits under the evidence cards, or under the note when only the note was recorded. */
-function renderDossier(score: Score, line: string): string {
-  const d = score.dossier;
+function renderDossier(d: Dossier | null, noteError: boolean, score: Score): string {
+  if (!d) {
+    return noteError
+      ? `<p class="muted note-pending" role="status">The rebuttal note could not be loaded. Submit still sends it.</p>`
+      : `<p class="muted loading note-pending" role="status"><span class="spinner" aria-hidden="true"></span>Writing the rebuttal note…</p>`;
+  }
+  const docLine = score.documents.some((x) => x.evidence.source === "recorded");
+  const line = docLine ? "" : recordedLine(score, d);
   const files = d.files.length
     ? `<ul class="files">${d.files.map((f) => `<li>${esc(f)}</li>`).join("")}</ul>`
     : `<p class="muted">No files will be attached.</p>`;
@@ -337,9 +344,9 @@ export interface Detail {
   open(d: Dispute): void;
   close(): void;
   isOpen(): boolean;
-  /** Called by the grid poll so the header and submit button follow the live row. */
+  /** Called by the grid poll so the header and submit button follow the live row; the score reloads when the row's evidence, win chance or status moved. */
   update(d: Dispute): void;
-  /** The audit trail is cheap, so it refreshes with the poll (the score does not, it can cost a model call). */
+  /** The audit trail is cheap, so it refreshes with every poll (the rebuttal note does not, it can cost a model call). */
   refreshAudit(): void;
 }
 
@@ -350,6 +357,12 @@ export function createDetail(opts: { onClose: (id: string) => void; onSubmitted:
   const result = el<HTMLElement>("submit-result");
   let current: Dispute | null = null;
   let score: Score | null = null;
+  let dossier: Dossier | null = null; // arrives after the score: a model may write the note
+  let noteKey = ""; // the case + documents the note held or being fetched is for
+  let noteError = false;
+  let scoreJson = "";
+  let rowSig = ""; // what the grid row looked like when the score was last fetched
+  let loadSeq = 0;
   let audit: AuditRow[] = [];
   let auditJson = "";
   let sending = false;
@@ -382,7 +395,7 @@ export function createDetail(opts: { onClose: (id: string) => void; onSubmitted:
     return `<h3 id="h-evidence">Extracted evidence</h3>
       <div class="add-row"><button id="add-evidence-btn" class="btn add-btn" type="button"${busy ? ' disabled aria-busy="true"' : ""}>${label}</button>
       <input id="evidence-file" type="file" accept="application/pdf" hidden></div>${err}
-      ${renderEvidence(sc, current?.currency ?? null)}${recorded ? recordedLine(sc) : ""}`;
+      ${renderEvidence(sc, current?.currency ?? null)}${recorded ? recordedLine(sc, dossier) : ""}`;
   }
 
   function paintEvidence(): void {
@@ -413,12 +426,16 @@ export function createDetail(opts: { onClose: (id: string) => void; onSubmitted:
     if (added && here()) {
       // the new read and score; if this fails the old ones stay and the next open shows the card
       const s = await api<Score>(`/api/disputes/${encodeURIComponent(d.id)}/score`).catch(() => null);
-      if (s && here()) score = s;
+      if (s && here()) {
+        score = s;
+        scoreJson = JSON.stringify(s);
+      }
     }
     adding = null;
     if (here()) {
       paintBody();
       paintHeader(); // the score can cross the fight line, which moves the dark pill
+      if (added) void loadDossier(d); // new documents, new note
       document.getElementById("add-evidence-btn")?.focus();
       void refreshAudit(); // its "Document added" line
     }
@@ -458,7 +475,11 @@ export function createDetail(opts: { onClose: (id: string) => void; onSubmitted:
         invoice = invoiceFromResult(r);
         // the score is unchanged, but the dossier note now lists a real invoice as the order record
         const s = await api<Score>(`/api/disputes/${encodeURIComponent(d.id)}/score`).catch(() => null);
-        if (s && current?.id === d.id) score = s;
+        if (s && current?.id === d.id) {
+          score = s;
+          scoreJson = JSON.stringify(s);
+          noteKey = ""; // the note changes even though the documents do not
+        }
       }
     } catch (e) {
       if (current?.id === d.id) invoiceError = errorText(e, "invoice");
@@ -466,6 +487,7 @@ export function createDetail(opts: { onClose: (id: string) => void; onSubmitted:
       if (invoiceBusy === d.id) invoiceBusy = null;
       if (current?.id === d.id) {
         paintBody();
+        void loadDossier(d);
         paintHeader(); // the score can cross the fight line, which moves the dark pill
         document.querySelector<HTMLElement>("#invoice-box .banner")?.focus();
         void refreshAudit();
@@ -634,33 +656,75 @@ export function createDetail(opts: { onClose: (id: string) => void; onSubmitted:
       body.innerHTML = `<p class="muted loading" role="status">Reading the evidence and scoring the case...</p>`;
       return;
     }
-    const line = recordedLine(score);
-    const docLine = score.documents.some((d) => d.evidence.source === "recorded");
     body.innerHTML = `
       <section aria-labelledby="h-score"><h3 id="h-score">Win probability</h3>${renderScore(score)}</section>
       <section aria-labelledby="h-evidence"><div id="evidence-box" class="drop" data-drop>${renderEvidenceBox(score)}</div></section>
       <section aria-labelledby="h-invoice"><h3 id="h-invoice">PayPal invoice</h3><div id="invoice-box" aria-live="polite">${renderInvoice()}</div></section>
-      <section aria-labelledby="h-dossier"><h3 id="h-dossier">Dossier preview</h3>${renderDossier(score, docLine ? "" : line)}</section>
+      <section id="dossier-sec" aria-labelledby="h-dossier"><h3 id="h-dossier">Dossier preview</h3>${renderDossier(dossier, noteError, score)}</section>
       <section aria-labelledby="h-audit"><h3 id="h-audit">Audit trail</h3><div id="audit-list">${renderAudit(audit)}</div></section>`;
   }
 
-  async function load(d: Dispute): Promise<void> {
-    loadError = null;
-    score = null;
-    paintBody();
-    paintHeader();
+  const sigOf = (d: Dispute) => [d.win_probability, d.status, d.doc_count, d.amount_value, d.reason].join("|");
+
+  function paintDossier(): void {
+    const sec = document.getElementById("dossier-sec");
+    if (!sec || !score) return;
+    sec.querySelectorAll(":scope > :not(h3)").forEach((n) => n.remove());
+    sec.insertAdjacentHTML("beforeend", renderDossier(dossier, noteError, score));
+  }
+
+  /** The rebuttal note, after the score has painted: a model call can take a minute. Once per case + document set. */
+  async function loadDossier(d: Dispute): Promise<void> {
+    if (!score) return;
+    const key = `${d.id}|${score.documents.map((x) => `${x.name}:${x.size}`).join("|")}`;
+    if (noteKey === key) return;
+    noteKey = key;
+    dossier = null;
+    noteError = false;
+    paintDossier();
+    try {
+      const n = await api<Dossier>(`/api/disputes/${encodeURIComponent(d.id)}/dossier`);
+      if (current?.id !== d.id || noteKey !== key) return;
+      dossier = n;
+    } catch {
+      if (current?.id !== d.id || noteKey !== key) return;
+      noteError = true;
+      noteKey = ""; // the next change of the row tries again
+    }
+    paintDossier();
+    if (score.documents.some((x) => x.evidence.source === "recorded")) paintEvidence(); // its recorded line also names the note's model
+  }
+
+  /** quiet: the score is already on screen, so refresh it in place (no loading state, no repaint unless it changed). */
+  async function load(d: Dispute, quiet = false): Promise<void> {
+    const seq = ++loadSeq;
+    rowSig = sigOf(d);
+    if (!quiet) {
+      loadError = null;
+      score = null;
+      dossier = null;
+      noteKey = "";
+      noteError = false;
+      paintBody();
+      paintHeader();
+    }
+    let changed = !quiet;
     try {
       const [s, a] = await Promise.all([api<Score>(`/api/disputes/${encodeURIComponent(d.id)}/score`), api<AuditRow[]>(`/api/disputes/${encodeURIComponent(d.id)}/audit`)]);
-      if (current?.id !== d.id) return;
+      if (current?.id !== d.id || seq !== loadSeq) return;
+      const json = JSON.stringify(s);
+      changed ||= json !== scoreJson;
+      scoreJson = json;
       score = s;
       audit = a;
       auditJson = JSON.stringify(a);
     } catch (e) {
-      if (current?.id !== d.id) return;
+      if (current?.id !== d.id || seq !== loadSeq || quiet) return; // a failed refresh keeps what is shown
       loadError = errorText(e);
     }
-    paintBody();
+    if (changed) paintBody();
     paintHeader();
+    void loadDossier(d);
   }
 
   async function refreshAudit(): Promise<void> {
@@ -818,6 +882,8 @@ export function createDetail(opts: { onClose: (id: string) => void; onSubmitted:
       if (!current || current.id !== d.id) return;
       current = d;
       paintHeader();
+      // documents appeared, the probability or the status moved: the score is cheap, so follow it (the note only if the documents changed)
+      if (sigOf(d) !== rowSig) void load(d, !!score);
     },
     refreshAudit: () => void refreshAudit(),
   };

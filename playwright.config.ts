@@ -31,6 +31,7 @@ export default defineConfig({
       DISPUTESHIELD_OPERATOR_TOKEN: "e2e-token",
       // regex and template paths only: the e2e run never calls a model or PayPal
       DISPUTESHIELD_LLM: "off",
+      DISPUTESHIELD_NOTE_DELAY: "2", // a busy model: the detail panel must not wait for the note
       ANTHROPIC_API_KEY: "",
       PAYPAL_CLIENT_ID: "",
       PAYPAL_CLIENT_SECRET: "",

@@ -222,7 +222,7 @@ test("a live sandbox record reads as recorded on PayPal, with its debug id, in t
   const [c] = await seed(request);
   const total = { currency_code: c.currency ?? "USD", value: c.amount_value ?? "10.00" };
   const live = {
-    mode: "paypal", demo: false, source: "live sandbox", label: "Recorded on PayPal sandbox", status: "DRAFT",
+    mode: "paypal", demo: false, source: "live sandbox", label: "Recorded on PayPal sandbox", simulated_case: true, status: "DRAFT",
     invoice_id: "INV2-ABCD-EFGH-IJKL-MNOP", invoice_number: "0042", debug_id: "f1e2d3c4b5a69", lookup_debug_id: "a1b2c3d4e5f60",
     fields: { invoice_id: "INV2-ABCD-EFGH-IJKL-MNOP", invoice_number: "0042", status: "DRAFT", total, item: "Order 1001", recipient: null, verified: true },
     score_before: 79, score_after: 83, score_changed: true, already_recorded: false,
@@ -240,6 +240,7 @@ test("a live sandbox record reads as recorded on PayPal, with its debug id, in t
   await expect(banner).toContainText(money(total));
   await expect(banner).toContainText("debug id f1e2d3c4b5a69");
   await expect(banner).toContainText("Win probability 79% → 83%");
+  await expect(banner).toContainText("Simulated case · invoice call live on sandbox");
   await banner.evaluate((b) => b.scrollIntoView({ block: "center" }));
   await page.screenshot({ path: `${SHOTS}/f18-desktop-live.png` });
 

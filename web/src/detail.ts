@@ -198,6 +198,7 @@ const INVOICE_LINE =
 /** What the invoice banner shows, from the POST answer or from the invoice_recorded audit row on a reload. */
 interface InvoiceView {
   demo: boolean;
+  simulated: boolean;
   number: string;
   id: string;
   total: Money | null;
@@ -210,6 +211,7 @@ interface InvoiceView {
 function invoiceFromResult(r: InvoiceResult): InvoiceView {
   return {
     demo: r.demo,
+    simulated: r.simulated_case,
     number: r.invoice_number,
     id: r.invoice_id,
     total: r.fields.total,
@@ -225,6 +227,7 @@ function invoiceFromAudit(d: Record<string, unknown>): InvoiceView {
   const total = d.total as Money | undefined;
   return {
     demo: d.mode !== "paypal",
+    simulated: d.simulated_case === true,
     number: String(d.invoice_number ?? ""),
     id: String(d.invoice_id ?? ""),
     total: total && typeof total === "object" ? total : null,
@@ -243,6 +246,7 @@ function renderInvoiceBanner(v: InvoiceView): string {
   ];
   if (v.before !== null && v.after !== null && v.after !== v.before) lines.push(`Win probability ${v.before}% → ${v.after}%`);
   if (v.already) lines.push("Recorded earlier: nothing new was created.");
+  if (v.simulated) lines.push(`<span class="banner-note">Simulated case · invoice call live on sandbox</span>`);
   const title = v.demo ? DEMO_LABEL : "Recorded on PayPal sandbox";
   return `<div class="banner banner-${v.demo ? "info" : "good"}" tabindex="-1"><strong>${esc(title)}</strong>${lines.map((l) => `<span>${l}</span>`).join("")}</div>`;
 }

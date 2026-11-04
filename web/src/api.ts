@@ -103,6 +103,7 @@ export interface InvoiceResult {
   mode: "paypal" | "demo";
   demo: boolean;
   label: string;
+  simulated_case: boolean; // the dispute is a seeded simulation, the invoice call was real
   status: string;
   invoice_id: string;
   invoice_number: string;

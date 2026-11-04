@@ -198,6 +198,10 @@ body {
   white-space: nowrap;
 }
 
+.badge[hidden] {
+  display: none; /* the demo badge must go away with demo mode off */
+}
+
 .ap-hint[hidden] {
   display: none;
 }
@@ -1353,6 +1357,11 @@ kbd {
 
 #invoice-box .banner {
   gap: 3px;
+}
+
+#invoice-box .banner .banner-note {
+  font-size: 13px;
+  opacity: 0.75; /* secondary text on the tinted card */
 }
 
 #invoice-box .banner span {

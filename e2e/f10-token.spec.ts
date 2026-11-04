@@ -23,7 +23,7 @@ test("a link with the token opens the grid and drops the token from the address 
   const errors = watchErrors(page);
   await page.goto(`/#token=${TOKEN}`);
   await expect(page.locator("#status")).toHaveText("API online");
-  await expect(page.getByRole("heading", { name: "Operator token needed" })).toBeHidden();
+  await expect(page.getByRole("heading", { name: "Open the operator console" })).toBeHidden();
   await expect(page.getByRole("region", { name: "Disputes table" })).toBeVisible();
   expect(page.url()).not.toContain("token=");
   expect(await page.evaluate(() => location.hash)).toBe("");
@@ -36,7 +36,7 @@ test("a link with the token opens the grid and drops the token from the address 
 test("without a token the page asks for it, and pasting it brings the grid back", async ({ page }) => {
   const errors = watchErrors(page);
   await page.goto("/");
-  const heading = page.getByRole("heading", { name: "Operator token needed" });
+  const heading = page.getByRole("heading", { name: "Open the operator console" });
   await expect(heading).toBeVisible();
   await expect(page.getByText("The server prints a link with the token when it starts.")).toBeVisible();
   await expect(page.getByRole("region", { name: "Disputes table" })).toBeHidden(); // no broken grid behind it
@@ -56,7 +56,7 @@ test("without a token the page asks for it, and pasting it brings the grid back"
 test("a wrong token is refused and the page says so", async ({ page }) => {
   const errors = watchErrors(page);
   await page.goto("/#token=not-the-token");
-  const heading = page.getByRole("heading", { name: "Operator token needed" });
+  const heading = page.getByRole("heading", { name: "Open the operator console" });
   await expect(heading).toBeVisible();
   expect(page.url()).not.toContain("token=");
 

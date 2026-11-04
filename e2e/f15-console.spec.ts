@@ -326,7 +326,7 @@ test.describe("without a stored token", () => {
   test("a new #token in the address bar is used without a reload", async ({ page }) => {
     const errors = watchErrors(page);
     await page.goto("/#token=not-the-token");
-    const gate = page.getByRole("heading", { name: "Operator token needed" });
+    const gate = page.getByRole("heading", { name: "Open the operator console" });
     await expect(gate).toBeVisible();
     await page.evaluate(() => ((window as unknown as { marker: number }).marker = 1));
 

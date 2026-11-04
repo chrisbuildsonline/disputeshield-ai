@@ -49,7 +49,7 @@ function showGate(refused: boolean): void {
   const demo = demoToken !== null;
   byId("gate-demo").hidden = !demo;
   byId("gate-token-head").hidden = !demo;
-  byId("token-title").textContent = demo ? "No operator token needed" : "Operator token needed";
+  byId("token-title").textContent = demo ? "Open the operator console" : "Operator token needed";
   byId("token-use").classList.toggle("btn-primary", !demo); // one dark pill per screen
   gate.hidden = false;
   document.body.classList.add("locked");
@@ -337,7 +337,17 @@ function paintKpis(s: Summary): void {
   risk.hidden = s.at_risk.length === 0;
   byId("kpi-risk-none").hidden = s.at_risk.length > 0;
   risk.classList.toggle("kpi-money-many", s.at_risk.length > 2);
-  put(risk, s.at_risk.map((m) => `<li>${moneyHtml(m.value, m.currency)}</li>`).join(""));
+  // desktop lists every currency; a phone keeps the first as the main total and tucks the rest under "+N currencies"
+  put(risk, s.at_risk.map((m, i) => `<li${i ? ' class="kpi-rest"' : ""}>${moneyHtml(m.value, m.currency)}</li>`).join(""));
+  const more = byId("kpi-more");
+  more.hidden = s.at_risk.length < 2;
+  const rest = s.at_risk.slice(1);
+  put(
+    more,
+    rest.length
+      ? `<summary>+${rest.length} ${rest.length === 1 ? "currency" : "currencies"}</summary><ul>${rest.map((m) => `<li>${moneyHtml(m.value, m.currency)}</li>`).join("")}</ul>`
+      : "",
+  );
   text(
     byId("kpi-risk-foot"),
     s.at_risk.length ? `in ${s.at_risk.length} ${s.at_risk.length === 1 ? "currency" : "currencies"}, open cases only` : "nothing at stake",

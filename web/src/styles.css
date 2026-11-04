@@ -470,6 +470,11 @@ kbd {
   gap: 2px 18px;
 }
 
+/* only a phone folds the other currencies away; the desktop strip lists them all */
+.kpi-more {
+  display: none;
+}
+
 .kpi-money[hidden],
 .kpi-value[hidden] {
   display: none;
@@ -1408,6 +1413,16 @@ kbd {
   gap: 16px;
 }
 
+.score-none {
+  flex-wrap: wrap;
+  gap: 4px 16px;
+}
+
+.score-hint {
+  margin: 0;
+  font-size: 14px;
+}
+
 .score-num {
   font-size: 40px;
   font-weight: 800;
@@ -1843,11 +1858,46 @@ kbd {
   .kpi-money-many {
     display: flex;
     flex-direction: column;
+    font-size: 26px;
+  }
+
+  .kpi-rest {
+    display: none; /* shown under "+N currencies" instead */
+  }
+
+  .kpi-more:not([hidden]) {
+    display: block;
+    margin-top: 2px;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--muted, #64748b);
+  }
+
+  .kpi-more summary {
+    cursor: pointer;
+    padding: 2px 0;
+  }
+
+  .kpi-more ul {
+    list-style: none;
+    margin: 2px 0 0;
+    padding: 0;
     font-size: 16px;
+    font-weight: 700;
+    color: inherit;
+    font-variant-numeric: tabular-nums;
   }
 
   .kpi-amount {
     font-size: 20px;
+  }
+
+  /* the reason wraps instead of cutting off at "Item not receive…" */
+  .kpi-link .kpi-foot {
+    white-space: normal;
+    overflow: visible;
+    text-overflow: clip;
+    overflow-wrap: anywhere;
   }
 
   .kpi-top {

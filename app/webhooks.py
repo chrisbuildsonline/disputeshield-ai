@@ -161,6 +161,7 @@ def list_disputes() -> list[dict[str, Any]]:
     for row in rows:
         row["review_reasons"] = reasons.get(row["id"])
         docs = evidence.get(row["id"])
+        row["doc_count"] = len(docs or [])  # lets an open detail panel notice new evidence
         billing = row.pop("billing_address")
         row["win_probability"] = (
             scorecard.score_dispute(row, billing, [ExtractedEvidence.model_validate(x) for x in docs]).probability

@@ -547,7 +547,7 @@ def test_score_route_includes_recommendation(client: TestClient) -> None:
     r = client.get(f"/api/disputes/{did}/score")
     assert r.status_code == 200, r.text
     body = r.json()
-    assert "probability" in body and "factors" in body and "dossier" in body
+    assert "probability" in body and "factors" in body and "documents" in body
     rec = body["recommendation"]
     assert set(rec) == {"action", "reason", "fight_at", "accept_below"}
     assert (rec["fight_at"], rec["accept_below"]) == (60, 30)

@@ -26,12 +26,13 @@ curl -fs "$HOST/" | grep -qi '<html' || { echo "GET / is not HTML" >&2; exit 1; 
 # no Ollama on the host: the sidecar's model must read the PDFs and write the note, not the regex/template fallback
 auth="Authorization: Bearer $token"
 dispute=$(curl -fs --max-time 180 -X POST -H "$auth" "$HOST/api/demo/chargeback" | python3 -c 'import json,sys; print(json.load(sys.stdin)["id"])')
+note=$(curl -fs --max-time 180 -H "$auth" "$HOST/api/disputes/$dispute/dossier" | python3 -c 'import json,sys; print(json.load(sys.stdin)["note_source"])')
+[ "$note" = "ollama" ] || { echo "note is not model-written ($note)" >&2; exit 1; }
 curl -fs --max-time 180 -H "$auth" "$HOST/api/disputes/$dispute/score" | python3 -c '
 import json, sys
 d = json.load(sys.stdin)
 sources = [x["evidence"]["source"] for x in d["documents"]]
 assert sources and set(sources) == {"ollama"}, f"evidence sources {sources}"
-assert d["dossier"]["note_source"] == "ollama", "note is not model-written"
 assert d["probability"] == 100, "demo score " + str(d["probability"]) + " is not the fixed 100"
 ' || { echo "sidecar model did not do the extraction and note" >&2; exit 1; }
 

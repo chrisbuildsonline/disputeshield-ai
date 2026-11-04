@@ -51,14 +51,15 @@ def test_a_real_recorded_invoice_is_listed_as_the_order_record_in_the_dossier(
     client: TestClient, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     did, _ = seeded_then(client, monkeypatch)
-    plain = client.get(f"/api/disputes/{did}/score").json()
+    plain = client.get(f"/api/disputes/{did}/dossier").json()
+    plain_score = client.get(f"/api/disputes/{did}/score").json()
     client.post(f"/api/disputes/{did}/paypal-invoice")
-    after = client.get(f"/api/disputes/{did}/score").json()
+    after = client.get(f"/api/disputes/{did}/dossier").json()
     today = datetime.now(UTC).date().isoformat()
     line = f"Order record: PayPal invoice {LIVE_REC['invoice_id']} (draft, created {today})."
-    assert after["dossier"]["note"] == f"{plain['dossier']['note']} {line}"
-    assert after["dossier"]["note_source"] == plain["dossier"]["note_source"]
-    assert after["probability"] == plain["probability"]
+    assert after["note"] == f"{plain['note']} {line}"
+    assert after["note_source"] == plain["note_source"]
+    assert client.get(f"/api/disputes/{did}/score").json()["probability"] == plain_score["probability"]
 
 
 def test_a_real_paypal_dispute_is_not_marked_simulated(client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:

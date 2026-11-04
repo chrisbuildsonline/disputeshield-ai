@@ -7,7 +7,7 @@ from typing import Any
 import pytest
 from fastapi.testclient import TestClient
 
-from app import submit
+from app import store, submit
 from app.dossier import build_dossier
 from app.main import app
 
@@ -90,7 +90,8 @@ def test_score_for_demo_dispute_is_100(client: TestClient) -> None:
     assert all(f["reason"] for f in s["factors"])
     assert [x["name"] for x in s["documents"]] == ["ups_receipt.pdf"]
     assert s["documents"][0]["evidence"]["source"] == "fallback"
-    d = s["dossier"]
+    assert "dossier" not in s
+    d = client.get(f"/api/disputes/{did}/dossier").json()
     assert d["note_source"] == "template"
     assert "1Z999AA10123456784" in d["note"]
     assert "USD 49.90" in d["note"]
@@ -106,8 +107,9 @@ def test_score_without_documents(client: TestClient) -> None:
     s = client.get(f"/api/disputes/{did}/score").json()
     assert s["probability"] == 9
     assert s["documents"] == []
-    assert s["dossier"]["files"] == []
-    assert s["dossier"]["note"]
+    d = client.get(f"/api/disputes/{did}/dossier").json()
+    assert d["files"] == []
+    assert d["note"]
 
 
 def test_list_has_win_probability(client: TestClient) -> None:
@@ -129,15 +131,43 @@ def test_preview_is_cached_per_document_set(client: TestClient, monkeypatch: pyt
 
     monkeypatch.setattr(submit, "build_dossier", counting)
     did = simulate(client)["id"]
-    first = client.get(f"/api/disputes/{did}/score").json()
-    assert client.get(f"/api/disputes/{did}/score").json() == first
+    assert client.get(f"/api/disputes/{did}/score").json()["probability"] == 100
+    assert calls == []  # the score never waits on the note
+    first = client.get(f"/api/disputes/{did}/dossier").json()
+    assert client.get(f"/api/disputes/{did}/dossier").json() == first
     assert len(calls) == 1
     crm = (SAMPLES / "crm_order.pdf").read_bytes()
     r = client.post(f"/api/disputes/{did}/documents", params={"name": "crm_order.pdf"}, content=crm)
     assert r.status_code == 200
-    s = client.get(f"/api/disputes/{did}/score").json()
+    second = client.get(f"/api/disputes/{did}/dossier").json()
     assert len(calls) == 2
-    assert s["probability"] == 100
+    assert "crm_order.pdf" in second["files"]
+
+
+def test_score_never_calls_the_model(client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
+    def boom(*a: Any, **k: Any) -> Any:
+        raise AssertionError("the score route must not build the dossier")
+
+    monkeypatch.setattr(submit, "build_dossier", boom)
+    did = simulate(client)["id"]
+    r = client.get(f"/api/disputes/{did}/score")
+    assert r.status_code == 200 and r.json()["probability"] == 100
+    assert client.get("/api/disputes/nope/dossier").status_code == 404
+
+
+def test_submit_sends_the_dossier_the_preview_showed(client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
+    sent: list[dict[str, Any]] = []
+    real = store.finish_submission
+
+    def spy(sid: int, state: str, **k: Any) -> None:
+        sent.append(k["input"])
+        real(sid, state, **k)
+
+    monkeypatch.setattr(store, "finish_submission", spy)
+    did = simulate(client)["id"]
+    shown = client.get(f"/api/disputes/{did}/dossier").json()
+    assert client.post(f"/api/disputes/{did}/submit").status_code == 200
+    assert sent[-1]["evidences"][0]["notes"] == shown["note"]
 
 
 def test_submit_after_demo_chargeback(client: TestClient) -> None:

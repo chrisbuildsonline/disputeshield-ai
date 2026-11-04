@@ -280,9 +280,9 @@ def test_demo_fixture_is_deterministic_and_repeat_is_idempotent(client: TestClie
 
 def test_demo_fixture_invoice_stays_out_of_the_dossier_note(client: TestClient) -> None:
     d = seed_demo(client)[1]
-    before = client.get(f"/api/disputes/{d['id']}/score").json()["dossier"]
+    before = client.get(f"/api/disputes/{d['id']}/dossier").json()
     body = client.post(f"/api/disputes/{d['id']}/paypal-invoice").json()
-    after = client.get(f"/api/disputes/{d['id']}/score").json()["dossier"]
+    after = client.get(f"/api/disputes/{d['id']}/dossier").json()
     assert after["note"] == before["note"]
     assert "Order record" not in after["note"] and body["invoice_number"] not in after["note"]
 

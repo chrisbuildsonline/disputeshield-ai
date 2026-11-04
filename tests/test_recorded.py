@@ -208,11 +208,13 @@ def test_score_route_keeps_the_recorded_note_after_invoice(tmp_path: Path, monke
     c = TestClient(app)
     d = c.post("/api/demo/seed").json()["disputes"][4]  # madrid
     before = c.get(f"/api/disputes/{d['id']}/score").json()
+    note_before = c.get(f"/api/disputes/{d['id']}/dossier").json()
     assert c.post(f"/api/disputes/{d['id']}/paypal-invoice").status_code == 200
     after = c.get(f"/api/disputes/{d['id']}/score").json()
+    note_after = c.get(f"/api/disputes/{d['id']}/dossier").json()
     assert after["factors"] == before["factors"]
-    assert before["dossier"]["note_source"] == after["dossier"]["note_source"] == "recorded"
-    assert before["dossier"]["note_model"] == after["dossier"]["note_model"]
+    assert note_before["note_source"] == note_after["note_source"] == "recorded"
+    assert note_before["note_model"] == note_after["note_model"]
 
 
 def test_facts_hash_is_stable_across_runs() -> None:
@@ -236,7 +238,7 @@ def test_seeded_cases_get_recorded_notes(tmp_path: Path, monkeypatch: pytest.Mon
     c = TestClient(app)
     got = {}
     for s, d in zip(demo.SCENARIOS, c.post("/api/demo/seed").json()["disputes"], strict=True):
-        got[s.key] = c.get(f"/api/disputes/{d['id']}/score").json()["dossier"]["note_source"]
+        got[s.key] = c.get(f"/api/disputes/{d['id']}/dossier").json()["note_source"]
     assert got == {s.key: "recorded" for s in demo.SCENARIOS}
 
 

@@ -1,5 +1,6 @@
 """Evidence documents, the submit flow, the audit log and sync from PayPal."""
 
+import asyncio
 import os
 from datetime import UTC, datetime
 from decimal import Decimal, InvalidOperation
@@ -83,7 +84,7 @@ def audit(dispute_id: str) -> list[dict[str, Any]]:
     return store.list_audit(dispute_id)
 
 
-_PREVIEWS: dict[tuple[Any, ...], dict[str, Any]] = {}  # dossier previews, see score_preview
+_PREVIEWS: dict[tuple[Any, ...], dict[str, Any]] = {}  # dossier previews, see dossier_preview
 
 
 def _order_record(dispute_id: str) -> str | None:
@@ -95,18 +96,22 @@ def _order_record(dispute_id: str) -> str | None:
     return None
 
 
-@router.get("/api/disputes/{dispute_id}/score")
-async def score_preview(dispute_id: str) -> dict[str, Any]:
-    """Score breakdown plus the dossier the submit would send.
-
-    The note may cost a model call, so the preview is only built here (the detail panel opening, never the
-    grid's poll) and is cached per dispute + document set: same documents, same note, no second call.
-    """
+def _scored(dispute_id: str) -> tuple[dict[str, Any], list[dict[str, Any]], Any, Any, list[ExtractedEvidence]]:
     d = _require_dispute(dispute_id)
     docs = store.list_documents(dispute_id, with_data=True)
     evs = [ExtractedEvidence.model_validate(x["evidence"]) for x in docs]
     dispute = scorecard.to_dispute(d, scorecard.billing_of(d["resource"]))
-    result = score(dispute, scorecard.merge(evs))
+    return d, docs, dispute, score(dispute, scorecard.merge(evs)), evs
+
+
+@router.get("/api/disputes/{dispute_id}/dossier")
+async def dossier_preview(dispute_id: str) -> dict[str, Any]:
+    """The dossier the submit would send. The note may cost a model call, so it lives apart from the score.
+
+    Only the detail panel asks (never the grid's poll), and the answer is cached per dispute + document set:
+    same documents, same note, no second call.
+    """
+    d, docs, dispute, result, evs = _scored(dispute_id)
     order_record = _order_record(dispute_id)
     key = (
         dispute_id, d["reason"], d["amount_value"], tuple((x["name"], x["created_at"]) for x in docs), llm.provider(),
@@ -114,6 +119,7 @@ async def score_preview(dispute_id: str) -> dict[str, Any]:
     )
     preview = _PREVIEWS.get(key)
     if preview is None:
+        await asyncio.sleep(float(os.environ.get("DISPUTESHIELD_NOTE_DELAY") or 0))  # test hook: a slow model, off unless set
         try:
             dossier = await run_in_threadpool(
                 build_dossier, dispute, evs, result, [(x["name"], x["data"]) for x in docs],
@@ -130,6 +136,13 @@ async def score_preview(dispute_id: str) -> dict[str, Any]:
         if len(_PREVIEWS) >= 256:
             _PREVIEWS.clear()
         _PREVIEWS[key] = preview
+    return preview
+
+
+@router.get("/api/disputes/{dispute_id}/score")
+async def score_preview(dispute_id: str) -> dict[str, Any]:
+    """Score breakdown: deterministic and fast, never a model call (the note is at /dossier)."""
+    _, docs, _, result, _ = _scored(dispute_id)
     points = [f.weight if f.met else 0 for f in result.factors]
     action, reason = recommend(result.probability)
     return {
@@ -148,7 +161,6 @@ async def score_preview(dispute_id: str) -> dict[str, Any]:
             for f, p in zip(result.factors, points, strict=True)
         ],
         "documents": [{"name": x["name"], "size": x["size"], "evidence": x["evidence"]} for x in docs],
-        "dossier": preview,
     }
 
 

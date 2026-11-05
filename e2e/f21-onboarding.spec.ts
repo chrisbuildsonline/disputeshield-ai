@@ -100,6 +100,24 @@ test("demo mode off: the paste form is the primary action and there is no demo b
   expect(seen.errors).toEqual([]);
 });
 
+for (const [name, size] of [["desktop", { width: 1440, height: 900 }], ["phone", { width: 375, height: 812 }]] as const) {
+  test(`demo mode seen from a remote client (${name}): the sign-in card with a line on where the demo opens`, async ({ page }) => {
+    const seen = watch(page);
+    await page.setViewportSize(size);
+    await config(page, { demo_mode: true, demo_token: null });
+    await page.goto("/");
+    await expect(page.getByRole("heading", { name: "Operator token needed" })).toBeVisible();
+    await expect(page.getByText("The one-click demo opens on the machine running the server. Paste the operator token from its log.")).toBeVisible();
+    await expect(demoBtn(page)).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Use token" })).toHaveClass(/btn-primary/);
+    await expect(page.locator("#demo-badge")).toHaveJSProperty("hidden", false); // still a demo server (the header sits behind the card)
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(size.width);
+    await page.screenshot({ path: `${SHOTS}/f32-gate-remote-${name}.png`, fullPage: true });
+    expect(seen.calls).toEqual([]);
+    expect(seen.errors).toEqual([]);
+  });
+}
+
 test("a bad link token is refused out loud, and demo mode still offers its button", async ({ page }) => {
   const seen = watch(page);
   await config(page, DEMO);

@@ -1780,6 +1780,18 @@ kbd {
   font-size: 14px;
 }
 
+/* a demo server seen from a remote client: one muted line between the lede and the paste form */
+.gate-remote {
+  margin-top: 14px;
+  color: var(--muted);
+  font-size: 13px;
+  text-wrap: pretty;
+}
+
+.gate-remote[hidden] {
+  display: none;
+}
+
 .gate-demo:not([hidden]) + .gate-token .gate-hint {
   font-size: 13px;
 }

@@ -43,13 +43,15 @@ const emptyEl = byId("empty");
 
 const gate = byId("token-gate");
 const gateOpen = () => !gate.hidden;
-let demoToken: string | null = null; // /api/config hands it out in demo mode only
+let demoToken: string | null = null; // /api/config hands it out in demo mode, to a local client only
+let demoMode = false;
 
 /** The sign-in card. In demo mode it leads with one click into the console; the paste form steps back. */
 function showGate(refused: boolean): void {
   const demo = demoToken !== null;
   byId("gate-demo").hidden = !demo;
   byId("gate-token-head").hidden = !demo;
+  byId("gate-remote").hidden = demo || !demoMode; // a demo server seen from a remote client: no token handed out
   byId("token-title").textContent = demo ? "Open the operator console" : "Operator token needed";
   byId("token-use").classList.toggle("btn-primary", !demo); // one dark pill per screen
   gate.hidden = false;
@@ -614,6 +616,7 @@ try {
   const cfg = await api<{ demo_mode: boolean; demo_token?: string | null }>("/api/config");
   byId("demo-badge").hidden = !cfg.demo_mode;
   simulateBtn.hidden = !cfg.demo_mode;
+  demoMode = cfg.demo_mode;
   demoToken = cfg.demo_token ?? null;
 } catch {
   /* the poll below reports the outage */

@@ -166,6 +166,10 @@ footer status line are hidden; the status stays for screen readers). The page ca
   Under it a muted 13px note: sandbox only, anyone who can reach the port can open it, and
   `DISPUTESHIELD_DEMO_MODE=0` (inset code chip) turns it off. The paste form follows under a hairline
   with a "Have an operator token?" section label, quieter hint text, and Use token as a secondary pill.
+- **Demo mode, remote client** (`demo_mode` true, `demo_token` null: the server only hands the token to
+  a local client): the Demo off card below, plus one muted hint line above the form, "The one-click demo
+  opens on the machine running the server. Paste the operator token from its log." The badge and the
+  simulate button still show.
 - **Demo off**: title "Operator token needed", the hint, and the paste form with Use token as the
   dark pill. No demo button.
 - **Form**: "Token" label 13px/600; a 999px pill input and the button side by side.

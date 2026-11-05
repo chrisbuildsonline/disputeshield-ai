@@ -13,7 +13,7 @@ from fastapi.concurrency import run_in_threadpool
 from pydantic import BaseModel, Field, ValidationError
 
 from app import auth, autopilot, demo, llm, paypal, scorecard, store
-from app.dossier import _validate_files, build_dossier
+from app.dossier import NoteChoice, _validate_files, build_dossier
 from app.extract import MAX_PDF_BYTES, ExtractedEvidence, extract
 from app.scoring import ACCEPT_BELOW, FIGHT_AT, recommend, score
 from app.webhooks import DisputeResource, dispute_row, read_body
@@ -52,6 +52,7 @@ async def add_document(
     dispute_id: str, request: Request, background: BackgroundTasks, name: str = Query(max_length=255)
 ) -> dict[str, Any]:
     _require_dispute(dispute_id)
+    await asyncio.sleep(float(os.environ.get("DISPUTESHIELD_READ_DELAY") or 0))  # test hook: a slow model read, off unless set
     stored = await _store_document(dispute_id, name, await read_body(request, MAX_PDF_BYTES))
     if not store.has_live_submission(dispute_id):
         # new evidence may clear an earlier flag; with autopilot off the rerun only scores and flags, it never sends
@@ -85,6 +86,14 @@ def audit(dispute_id: str) -> list[dict[str, Any]]:
 
 
 _PREVIEWS: dict[tuple[Any, ...], dict[str, Any]] = {}  # dossier previews, see dossier_preview
+_CHOICES: dict[tuple[Any, ...], NoteChoice] = {}  # the note behind each preview, so a submit does not ask the model again
+
+
+def _preview_key(dispute_id: str, d: dict[str, Any], docs: list[dict[str, Any]], order_record: str | None) -> tuple[Any, ...]:
+    return (
+        dispute_id, d["reason"], d["amount_value"], tuple((x["name"], x["created_at"]) for x in docs), llm.provider(),
+        order_record,
+    )
 
 
 def _order_record(dispute_id: str) -> str | None:
@@ -113,10 +122,7 @@ async def dossier_preview(dispute_id: str) -> dict[str, Any]:
     """
     d, docs, dispute, result, evs = _scored(dispute_id)
     order_record = _order_record(dispute_id)
-    key = (
-        dispute_id, d["reason"], d["amount_value"], tuple((x["name"], x["created_at"]) for x in docs), llm.provider(),
-        order_record,
-    )
+    key = _preview_key(dispute_id, d, docs, order_record)
     preview = _PREVIEWS.get(key)
     if preview is None:
         await asyncio.sleep(float(os.environ.get("DISPUTESHIELD_NOTE_DELAY") or 0))  # test hook: a slow model, off unless set
@@ -135,7 +141,10 @@ async def dossier_preview(dispute_id: str) -> dict[str, Any]:
         }
         if len(_PREVIEWS) >= 256:
             _PREVIEWS.clear()
+            _CHOICES.clear()
         _PREVIEWS[key] = preview
+        if dossier.choice:
+            _CHOICES[key] = dossier.choice
     return preview
 
 
@@ -218,9 +227,11 @@ async def send_evidence(dispute_id: str) -> dict[str, Any]:
         evs = [ExtractedEvidence.model_validate(x["evidence"]) for x in docs]
         dispute = scorecard.to_dispute(d, scorecard.billing_of(d["resource"]))
         result = score(dispute, scorecard.merge(evs))
+        order_record = _order_record(dispute_id)
         dossier = await run_in_threadpool(
             build_dossier, dispute, evs, result, [(x["name"], x["data"]) for x in docs],
-            use_llm=_use_llm(), order_record=_order_record(dispute_id),
+            use_llm=_use_llm(), order_record=order_record,
+            note_choice=_CHOICES.get(_preview_key(dispute_id, d, docs, order_record)),
         )
         dossier_input = dossier.input
         status, response = UNDER_REVIEW, None

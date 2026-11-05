@@ -32,6 +32,7 @@ export default defineConfig({
       // regex and template paths only: the e2e run never calls a model or PayPal
       DISPUTESHIELD_LLM: "off",
       DISPUTESHIELD_NOTE_DELAY: "2", // a busy model: the detail panel must not wait for the note
+      DISPUTESHIELD_READ_DELAY: "2", // a busy model reading an upload: the console must say what it is doing
       ANTHROPIC_API_KEY: "",
       PAYPAL_CLIENT_ID: "",
       PAYPAL_CLIENT_SECRET: "",

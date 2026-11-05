@@ -4,6 +4,7 @@ import importlib.util
 import logging
 import re
 from pathlib import Path
+from typing import Any
 
 import pytest
 from fastapi.testclient import TestClient
@@ -22,16 +23,22 @@ def client() -> TestClient:
     return TestClient(app)
 
 
+def gate_fields(client: TestClient) -> dict[str, Any]:
+    """/api/config minus the progress hints (llm_model, paypal, see test_progress.py): what the sign-in gate reads."""
+    body: dict[str, Any] = client.get("/api/config").json()
+    return {k: v for k, v in body.items() if k not in ("llm_model", "paypal")}
+
+
 def test_config_in_demo_mode_hands_out_the_env_token(client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("DISPUTESHIELD_DEMO_MODE", "1")
     monkeypatch.setenv("DISPUTESHIELD_OPERATOR_TOKEN", "env-token")
-    assert client.get("/api/config").json() == {"demo_mode": True, "demo_token": "env-token"}
+    assert gate_fields(client) == {"demo_mode": True, "demo_token": "env-token"}
 
 
 def test_config_in_demo_mode_hands_out_the_generated_token(client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("DISPUTESHIELD_DEMO_MODE", "1")
     monkeypatch.delenv("DISPUTESHIELD_OPERATOR_TOKEN", raising=False)
-    body = client.get("/api/config").json()
+    body = gate_fields(client)
     assert body == {"demo_mode": True, "demo_token": auth.operator_token()}
     assert len(body["demo_token"]) >= 32
     assert client.get("/api/disputes", headers={"Authorization": f"Bearer {body['demo_token']}"}).status_code == 200
@@ -44,9 +51,9 @@ def test_config_with_demo_mode_off_has_no_token(client: TestClient, monkeypatch:
         monkeypatch.delenv("DISPUTESHIELD_DEMO_MODE", raising=False)
     else:
         monkeypatch.setenv("DISPUTESHIELD_DEMO_MODE", value)
-    assert client.get("/api/config").json() == {"demo_mode": False, "demo_token": None}
+    assert gate_fields(client) == {"demo_mode": False, "demo_token": None}
     monkeypatch.delenv("DISPUTESHIELD_OPERATOR_TOKEN")
-    assert client.get("/api/config").json() == {"demo_mode": False, "demo_token": None}
+    assert gate_fields(client) == {"demo_mode": False, "demo_token": None}
 
 
 def test_link_prefers_host_port_over_port(caplog: pytest.LogCaptureFixture, monkeypatch: pytest.MonkeyPatch) -> None:

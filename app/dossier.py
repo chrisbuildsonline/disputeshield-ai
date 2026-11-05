@@ -59,6 +59,7 @@ class Dossier:
     note_source: Literal["ollama", "claude", "recorded", "template"]
     note_model: str | None = None
     notes: list[str] = field(default_factory=list)  # why a model note was not used, if so
+    choice: "NoteChoice | None" = None  # the note as chosen, before the order record: build_dossier(note_choice=) reuses it
 
 
 # ---- helpers ----
@@ -304,9 +305,10 @@ def _claude_note(dispute: Dispute, evidence: list[ExtractedEvidence], result: Sc
     return text, resp.model
 
 
-def _choose_note(
-    dispute: Dispute, evs: list[ExtractedEvidence], result: ScoreResult, use_llm: bool
-) -> tuple[str, Literal["ollama", "claude", "recorded", "template"], str | None, list[str]]:
+NoteChoice = tuple[str, Literal["ollama", "claude", "recorded", "template"], str | None, list[str]]  # note, source, model, why
+
+
+def _choose_note(dispute: Dispute, evs: list[ExtractedEvidence], result: ScoreResult, use_llm: bool) -> NoteChoice:
     why: list[str] = []
     which = llm.provider() if use_llm else "off"
     if which != "off":
@@ -343,17 +345,20 @@ def build_dossier(
     *,
     use_llm: bool = True,
     order_record: str | None = None,
+    note_choice: NoteChoice | None = None,
 ) -> Dossier:
     """Build the provide-evidence request. Raises ValueError only for bad attachments.
 
     order_record is one line appended after the note (never sent to the model, never fact-checked), so a
-    recorded note keeps matching its facts hash.
+    recorded note keeps matching its facts hash. note_choice is a note already chosen for these exact facts (the
+    preview's), so a submit does not ask the model a second time.
     """
     files = [(n, bytes(d)) for n, d in documents]
     _validate_files(files)
     pairs = _tracking(evidence)
     fulfilment = dispute.reason == INR and any(c for c, _ in pairs)
-    note, source, model, why = _choose_note(dispute, evidence, result, use_llm)
+    choice = note_choice or _choose_note(dispute, evidence, result, use_llm)
+    note, source, model, why = choice
     if order_record:
         note = f"{_truncate(note, MAX_NOTES - len(order_record) - 1)} {order_record}"
     ev: dict[str, Any] = {"evidence_type": "PROOF_OF_FULFILLMENT" if fulfilment else "OTHER", "notes": note}
@@ -361,4 +366,4 @@ def build_dossier(
         ev["evidence_info"] = {"tracking_info": [_tracking_info(c, tn) for c, tn in pairs]}
     if files:
         ev["documents"] = [{"name": n} for n, _ in files]
-    return Dossier(input={"evidences": [ev]}, files=files, note_source=source, note_model=model, notes=why)
+    return Dossier(input={"evidences": [ev]}, files=files, note_source=source, note_model=model, notes=why, choice=choice)

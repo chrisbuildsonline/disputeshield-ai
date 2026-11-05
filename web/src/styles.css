@@ -590,6 +590,17 @@ kbd {
   .stage:has(> .detail:not([hidden])) {
     --panel-room: 580px; /* panel 580 + 12 from the edge + 16 gap - the stage's 28 padding */
   }
+
+  /* the KPI strip does the same: it stops short of the panel and the four cards fold into 2x2 */
+  .stage:has(> .detail:not([hidden])) .kpis {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    margin-right: var(--panel-room, 0px);
+  }
+
+  /* the narrower Money at risk cell lists its currencies one per line */
+  .stage:has(> .detail:not([hidden])) .kpi-money-many {
+    grid-template-columns: max-content;
+  }
 }
 
 #grid {

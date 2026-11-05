@@ -33,6 +33,7 @@ const REC: Record<RecAction, [label: string, tone: string]> = {
 interface Step {
   label: string;
   since: number;
+  short?: string; // the button's one-line busy label, where the step has a button
 }
 
 const secsSince = (since: number) => Math.floor((Date.now() - since) / 1000);
@@ -581,10 +582,9 @@ export function createDetail(opts: { onClose: (id: string) => void; onSubmitted:
     button.disabled = done || !score;
     button.classList.toggle("btn-done", !needsAction(current) && did !== "offered");
     if (sending) {
-      // the step in the button is for the eyes; the live region above it reads each change out once
+      // a short label that fits one line at 375px; the full step and its counter are in the pill above (#submit-result)
       button.setAttribute("aria-busy", "true");
-      const s = submitStep ?? { label: "Submitting…", since: Date.now() };
-      button.innerHTML = `<span class="spinner" aria-hidden="true"></span><span>${esc(s.label)} ${submitStep ? elapsed(s.since) : ""}</span>`;
+      button.innerHTML = `<span class="spinner" aria-hidden="true"></span>${submitStep?.short ?? "Submitting…"}`;
     } else {
       button.removeAttribute("aria-busy");
       button.textContent = !needsAction(current)
@@ -828,8 +828,8 @@ export function createDetail(opts: { onClose: (id: string) => void; onSubmitted:
     sending = true;
     delete result.dataset.shown;
     // the live region (#submit-result) hears each step change once; the counters inside it are aria-hidden
-    const step = (label: string) => {
-      submitStep = { label, since: Date.now() };
+    const step = (label: string, short: string) => {
+      submitStep = { label, since: Date.now(), short };
       if (current?.id !== d.id) return;
       result.innerHTML = stepPill(submitStep);
       paintHeader();
@@ -838,10 +838,10 @@ export function createDetail(opts: { onClose: (id: string) => void; onSubmitted:
     try {
       // the server builds the note and sends in one request, so the note is awaited here first: it is cached, and the submit reuses it
       if (!dossier) {
-        step(withModel("Writing the rebuttal note", llmModel));
+        step(withModel("Writing the rebuttal note", llmModel), "Writing note…");
         await loadDossier(d);
       }
-      step(d.source === "paypal" && paypalLive ? "Sending evidence to PayPal" : "Recording the evidence (demo, not sent to PayPal)");
+      step(d.source === "paypal" && paypalLive ? "Sending evidence to PayPal" : "Recording the evidence (demo, not sent to PayPal)", "Sending…");
       const r = await api<SubmitResult>(`/api/disputes/${encodeURIComponent(d.id)}/submit`, "POST");
       if (current?.id === d.id) {
         current = { ...d, status: r.status };

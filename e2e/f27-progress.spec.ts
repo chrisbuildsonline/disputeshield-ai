@@ -206,13 +206,14 @@ test("submit shows the note step, then the PayPal step, then clears", async ({ p
   await button.click(); // the note is still being written (2 s hold)
   await expect(button).toBeDisabled();
   await expect(button).toHaveAttribute("aria-busy", "true");
-  await expect(button).toContainText("Writing the rebuttal note with qwen3:8b");
-  await expect(button.locator(".elapsed")).toHaveText(/· \d+ s/);
+  await expect(button).toHaveText("Writing note…"); // the full step lives only in the pill above
+  await expect(button.locator(".elapsed")).toHaveCount(0);
   await expect(panel.locator("#submit-result")).toContainText("Writing the rebuttal note with qwen3:8b");
+  await expect(panel.locator("#submit-result .elapsed")).toHaveText(/· \d+ s/);
   await expect(panel.locator("#submit-result .elapsed")).toHaveAttribute("aria-hidden", "true");
   await page.screenshot({ path: `${SHOTS}/f27-submit-note-desktop.png` });
-  await expect(button).toContainText("Sending evidence to PayPal", { timeout: 10_000 });
-  await expect(panel.locator("#submit-result")).toContainText("Sending evidence to PayPal");
+  await expect(panel.locator("#submit-result")).toContainText("Sending evidence to PayPal", { timeout: 10_000 });
+  await expect(button).toHaveText("Sending…");
   await expect(button).toBeDisabled();
   await page.screenshot({ path: `${SHOTS}/f27-submit-paypal-desktop.png` });
   await expect(panel.locator("#submit-result .banner")).toContainText(/Demo mode/, { timeout: 10_000 });
@@ -238,8 +239,9 @@ test("submit in demo mode does not claim to talk to PayPal", async ({ page }) =>
   const button = panel.locator("#submit-btn");
   await expect(panel.locator("#h-dossier ~ .card .note")).toBeVisible({ timeout: 10_000 }); // the note is cached now
   await button.click();
-  await expect(button).toContainText("Recording the evidence (demo, not sent to PayPal)");
-  await expect(button).not.toContainText("PayPal sandbox");
+  await expect(panel.locator("#submit-result")).toContainText("Recording the evidence (demo, not sent to PayPal)");
+  await expect(button).toHaveText("Sending…");
+  await expect(button).not.toContainText("PayPal");
   await expect(panel.locator("#submit-result .banner")).toContainText(/Demo mode/, { timeout: 10_000 });
 });
 
@@ -263,10 +265,13 @@ test("phone: upload and submit steps fit at 375 wide", async ({ page }) => {
   await expect(panel.locator("#evidence-box .card").first()).toBeVisible({ timeout: 15_000 });
   const button = panel.locator("#submit-btn");
   await expect(button).toBeEnabled();
+  const idleHeight = (await button.boundingBox())!.height;
   await button.click();
-  await expect(button).toContainText(/Writing the rebuttal note|Sending evidence to PayPal/);
+  await expect(button).toHaveText(/^(Writing note…|Sending…)$/); // short: one line, the pill above has the full step
+  await expect(panel.locator("#submit-result")).toContainText(/Writing the rebuttal note|Sending evidence to PayPal/);
   await page.screenshot({ path: `${SHOTS}/f27-submit-mobile.png` });
   const box = await button.boundingBox();
   expect(box!.x + box!.width).toBeLessThanOrEqual(MOBILE.width);
+  expect(box!.height).toBeCloseTo(idleHeight, 0);
   await expect(panel.locator("#submit-result .banner")).toBeVisible({ timeout: 15_000 });
 });

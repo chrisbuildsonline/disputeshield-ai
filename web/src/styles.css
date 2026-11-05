@@ -597,6 +597,11 @@ kbd {
     margin-right: var(--panel-room, 0px);
   }
 
+  /* the title and its subtitle wrap within the room left of the panel */
+  .stage:has(> .detail:not([hidden])) .page-head {
+    margin-right: var(--panel-room, 0px);
+  }
+
   /* the narrower Money at risk cell lists its currencies one per line */
   .stage:has(> .detail:not([hidden])) .kpi-money-many {
     grid-template-columns: max-content;

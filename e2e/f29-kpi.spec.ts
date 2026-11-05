@@ -64,6 +64,17 @@ for (const [w, h] of [[1440, 1200], [1280, 900], [1100, 900]] as const) {
       return bad;
     });
     expect(clipped).toEqual([]);
+    // the page head and the header controls never sit under the panel either
+    const sub = await box(page, ".page-head p");
+    expect(sub.right, "subtitle right edge").toBeLessThanOrEqual(panel.left - 16 + 1);
+    const title = await box(page, ".page-title");
+    expect(title.right, "title right edge").toBeLessThanOrEqual(panel.left - 16 + 1);
+    const headerButtons = page.locator("header button, header input, .topbar button");
+    const hn = await headerButtons.count();
+    for (let i = 0; i < hn; i++) {
+      const b = await headerButtons.nth(i).boundingBox();
+      if (b) expect(b.y + b.height <= panel.top + 1 || b.x + b.width <= panel.left + 1, `header control ${i} under the panel`).toBe(true);
+    }
     const tops = new Set<number>();
     for (let i = 0; i < 4; i++) tops.add(Math.round((await cards.nth(i).boundingBox())!.y));
     expect(tops.size, "two rows of cards").toBe(2);

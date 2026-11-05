@@ -1,6 +1,7 @@
 """Operator token: every /api route needs it, except health, config and the PayPal webhook."""
 
 import hmac
+import ipaddress
 import logging
 import os
 import secrets
@@ -25,6 +26,26 @@ def operator_token() -> str:
 
 def demo_mode() -> bool:
     return os.environ.get("DISPUTESHIELD_DEMO_MODE") == "1"
+
+
+PRIVATE_NETS = [ipaddress.ip_network(n) for n in ("10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", "fc00::/7")]
+
+
+def token_for(request: Request) -> bool:
+    """May this client be handed the demo token? Loopback or private source and no proxy header, unless DEMO_PUBLIC=1."""
+    # ponytail: private-range trust assumes the LAN is trusted; for anything else set DISPUTESHIELD_DEMO_MODE=0 or put it behind a proxy
+    if os.environ.get("DISPUTESHIELD_DEMO_PUBLIC") == "1":
+        return True
+    if "x-forwarded-for" in request.headers or "forwarded" in request.headers:
+        return False  # a browser on this machine never sends these; a reverse proxy always adds them
+    try:
+        ip = ipaddress.ip_address(request.client.host if request.client else "")
+    except ValueError:
+        return False
+    if isinstance(ip, ipaddress.IPv6Address) and ip.ipv4_mapped:
+        ip = ip.ipv4_mapped
+    # not ip.is_private: that also covers documentation ranges like 203.0.113.0/24
+    return ip.is_loopback or any(ip in net for net in PRIVATE_NETS)
 
 
 def log_link() -> None:

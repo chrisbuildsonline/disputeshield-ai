@@ -190,6 +190,7 @@ All are in `.env.example`. The ones you are likely to set:
 | --- | --- |
 | `DISPUTESHIELD_OPERATOR_TOKEN` | Fixed operator token. Blank means a random one per start. |
 | `DISPUTESHIELD_DEMO_MODE` | `1` turns on the simulated chargeback and unsigned webhooks. On in compose and `bun run dev`. |
+| `DISPUTESHIELD_DEMO_PUBLIC` | `1` hands the demo token to every client, for a hosted sandbox demo. Unset, only a local client gets it. |
 | `PAYPAL_CLIENT_ID`, `PAYPAL_CLIENT_SECRET` | Sandbox REST app credentials. |
 | `PAYPAL_WEBHOOK_ID` | Turns on webhook signature checks. |
 | `PAYPAL_API_BASE` | PayPal host. Sandbox only. |
@@ -208,6 +209,7 @@ The app never runs open. Every `/api` route (disputes, documents, scores, submit
 - With a random token, the server logs a link when it starts: `Operator console: http://localhost:8000/#token=...` (the port is `PORT`, default 8000). Open it once. The page keeps the token in the browser and removes it from the address bar.
 - With `DISPUTESHIELD_OPERATOR_TOKEN` set, the token is never logged. The server logs `Operator console: http://localhost:8000/ (token from DISPUTESHIELD_OPERATOR_TOKEN)`, and the page asks you to paste the token (or open `/#token=<your token>` yourself).
 - Open on purpose: `GET /api/health`, `GET /api/config` and the PayPal webhook `POST /api/webhooks/paypal`. The webhook has its own signature check (or demo mode). The page itself holds no data, so it is open too.
+- `GET /api/config` hands out the demo token only to a local client (loopback or a private Docker/LAN address, and no `X-Forwarded-For`/`Forwarded` header). Set `DISPUTESHIELD_DEMO_PUBLIC=1` to share it on a hosted sandbox demo.
 
 ## Autopilot
 

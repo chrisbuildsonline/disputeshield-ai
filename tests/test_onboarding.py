@@ -20,7 +20,7 @@ README = (ROOT / "README.md").read_text(encoding="utf-8")
 
 @pytest.fixture
 def client() -> TestClient:
-    return TestClient(app)
+    return TestClient(app, client=("127.0.0.1", 50000))
 
 
 def gate_fields(client: TestClient) -> dict[str, Any]:
@@ -42,6 +42,32 @@ def test_config_in_demo_mode_hands_out_the_generated_token(client: TestClient, m
     assert body == {"demo_mode": True, "demo_token": auth.operator_token()}
     assert len(body["demo_token"]) >= 32
     assert client.get("/api/disputes", headers={"Authorization": f"Bearer {body['demo_token']}"}).status_code == 200
+
+
+def remote_config(monkeypatch: pytest.MonkeyPatch, host: str, headers: dict[str, str] | None = None) -> dict[str, Any]:
+    monkeypatch.setenv("DISPUTESHIELD_DEMO_MODE", "1")
+    monkeypatch.setenv("DISPUTESHIELD_OPERATOR_TOKEN", "env-token")
+    return gate_fields(TestClient(app, client=(host, 5000), headers=headers or {}))
+
+
+@pytest.mark.parametrize("host", ["127.0.0.1", "::1", "::ffff:127.0.0.1", "172.17.0.1", "192.168.1.20"])
+def test_config_hands_the_token_to_loopback_and_private_clients(monkeypatch: pytest.MonkeyPatch, host: str) -> None:
+    assert remote_config(monkeypatch, host) == {"demo_mode": True, "demo_token": "env-token"}
+
+
+@pytest.mark.parametrize("host", ["203.0.113.5", "2001:db8::1", "testclient"])
+def test_config_keeps_the_token_from_a_remote_client(monkeypatch: pytest.MonkeyPatch, host: str) -> None:
+    assert remote_config(monkeypatch, host) == {"demo_mode": True, "demo_token": None}
+
+
+@pytest.mark.parametrize("header", [{"X-Forwarded-For": "203.0.113.5"}, {"Forwarded": "for=203.0.113.5"}])
+def test_config_keeps_the_token_from_a_proxied_client(monkeypatch: pytest.MonkeyPatch, header: dict[str, str]) -> None:
+    assert remote_config(monkeypatch, "127.0.0.1", header) == {"demo_mode": True, "demo_token": None}
+
+
+def test_config_demo_public_hands_the_token_to_everyone(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("DISPUTESHIELD_DEMO_PUBLIC", "1")
+    assert remote_config(monkeypatch, "203.0.113.5", {"X-Forwarded-For": "203.0.113.5"}) == {"demo_mode": True, "demo_token": "env-token"}
 
 
 @pytest.mark.parametrize("value", [None, "0", "true", ""])

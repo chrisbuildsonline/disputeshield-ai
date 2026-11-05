@@ -139,8 +139,7 @@ test("a weak case recommends accepting, and accepting needs a confirm step", asy
 
   await expect(detail.getByLabel("Win probability not scored yet")).toHaveText("—"); // no documents: no number, like the grid
   const pill = detail.locator(".rec-pill");
-  await expect(pill).toHaveText("Accept");
-  await expect(pill).toHaveClass(/badge-red/);
+  await expect(pill).toHaveText("Add evidence"); // no documents: no verdict, the next step is evidence
   await expect(detail.getByText("No evidence yet, so there is no score. Upload a receipt to see how strong the case is.")).toBeVisible();
   await expect(detail.locator(".rec-reason")).not.toContainText("%");
 
@@ -148,7 +147,8 @@ test("a weak case recommends accepting, and accepting needs a confirm step", asy
   const offer = detail.getByRole("button", { name: "Offer refund" });
   await expect(accept).toBeEnabled();
   await expect(offer).toBeEnabled();
-  await expect(accept).toHaveClass(/btn-primary/); // the recommended action is the dark pill
+  await expect(accept).not.toHaveClass(/btn-primary/); // no verdict yet: Add evidence is the dark pill, conceding stays possible
+  await expect(detail.getByRole("button", { name: "Add evidence" })).toHaveClass(/btn-primary/);
   await expect(detail.getByRole("button", { name: "Submit evidence" })).not.toHaveClass(/btn-primary/);
   await page.screenshot({ path: `${SHOTS}/f13b-recommend-desktop.png` });
   await page.setViewportSize(MOBILE);

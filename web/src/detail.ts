@@ -216,9 +216,9 @@ function renderScore(score: Score): string {
         <span class="factor-text"><span>Capped at ${fmtWin(score.probability)}%</span><span class="muted">No chargeback is a sure win</span></span>
         <span class="points">−${score.probability - fmtWin(score.probability)}</span></li>`
       : "";
-  const [recLabel, recTone] = REC[score.recommendation.action];
   // no documents: the grid and the phone card show a dash, so the sheet does too (the rulebook's 9% is only a baseline)
   const unscored = score.documents.length === 0;
+  const [recLabel, recTone] = unscored ? ["Add evidence", "badge-muted"] : REC[score.recommendation.action];
   const head = unscored
     ? `<div class="score score-none">
       <div class="score-num muted" aria-label="Win probability not scored yet">&mdash;</div>
@@ -231,9 +231,13 @@ function renderScore(score: Score): string {
   return `${head}
     <div class="rec"><span class="rec-label">Recommended</span><span class="badge rec-pill ${recTone}">${recLabel}</span>
       <p class="rec-reason muted">${esc(unscored ? "No evidence yet, so there is no score. Upload a receipt to see how strong the case is." : score.recommendation.reason)}</p></div>
-    <ul class="factors"><li class="factor base"><span class="mark" aria-hidden="true">&#8226;</span>
+    ${
+      unscored
+        ? ""
+        : `<ul class="factors"><li class="factor base"><span class="mark" aria-hidden="true">&#8226;</span>
       <span class="factor-text"><span>Starting point</span><span class="muted">Baseline for this kind of dispute</span></span>
-      <span class="points">${score.base}</span></li>${factors}${cap}</ul>`;
+      <span class="points">${score.base}</span></li>${factors}${cap}</ul>`
+    }`;
 }
 
 /** The recorded line sits under the evidence cards, or under the note when only the note was recorded. */
@@ -396,6 +400,7 @@ export function createDetail(opts: { onClose: (id: string) => void; onSubmitted:
   const body = el<HTMLElement>("detail-body");
   const button = el<HTMLButtonElement>("submit-btn");
   const result = el<HTMLElement>("submit-result");
+  const submitWhy = el<HTMLElement>("submit-why");
   let current: Dispute | null = null;
   let score: Score | null = null;
   let dossier: Dossier | null = null; // arrives after the score: a model may write the note
@@ -453,7 +458,7 @@ export function createDetail(opts: { onClose: (id: string) => void; onSubmitted:
     const step = busy && addStep ? stepPill(addStep) : "";
     const recorded = sc.documents.some((d) => d.evidence.source === "recorded");
     return `<h3 id="h-evidence">Extracted evidence</h3>
-      <div class="add-row"><button id="add-evidence-btn" class="btn add-btn" type="button"${busy ? ' disabled aria-busy="true"' : ""}>${label}</button>
+      <div class="add-row"><button id="add-evidence-btn" class="btn add-btn${sc.documents.length ? "" : " btn-primary"}" type="button"${busy ? ' disabled aria-busy="true"' : ""}>${label}</button>
       <input id="evidence-file" type="file" accept="application/pdf" hidden></div>${step}${err}
       ${renderEvidence(sc, current?.currency ?? null)}${recorded ? recordedLine(sc, dossier) : ""}`;
   }
@@ -586,8 +591,12 @@ export function createDetail(opts: { onClose: (id: string) => void; onSubmitted:
     const answered = acted === "accepted" || audit.some((a) => ANSWERED.has(a.action));
     const busy = sending || acting !== null;
 
+    // no documents: nothing to send, so Submit waits and says why while Add evidence takes the dark pill
+    const noDocs = !!score && score.documents.length === 0 && needsAction(current);
+    submitWhy.hidden = !noDocs;
     const done = !needsAction(current) || busy || audit.some((a) => a.action === "submitted");
-    button.disabled = done || !score;
+    button.disabled = done || !score || noDocs;
+    button.classList.toggle("btn-await", noDocs);
     button.classList.toggle("btn-done", !needsAction(current) && did !== "offered");
     if (sending) {
       // a short label that fits one line at 375px; the full step and its counter are in the pill above (#submit-result)
@@ -609,11 +618,12 @@ export function createDetail(opts: { onClose: (id: string) => void; onSubmitted:
     // below the fight line the settle actions take over the dark pill; Submit evidence stays as the way to fight anyway
     const rec = score?.recommendation.action;
     const low = !!rec && rec !== "fight";
+    const verdict = noDocs ? undefined : rec; // with no documents the baseline says nothing: conceding stays possible, but no action is recommended
     settle.hidden = !low;
-    button.classList.toggle("btn-primary", !low);
-    button.classList.toggle("btn-quiet", low && needsAction(current));
-    offerBtn.classList.toggle("btn-primary", rec === "offer_refund");
-    acceptBtn.classList.toggle("btn-primary", rec === "accept");
+    button.classList.toggle("btn-primary", !low && !noDocs);
+    button.classList.toggle("btn-quiet", low && !noDocs && needsAction(current));
+    offerBtn.classList.toggle("btn-primary", verdict === "offer_refund");
+    acceptBtn.classList.toggle("btn-primary", verdict === "accept");
     acceptBtn.disabled = closed || answered || busy;
     offerBtn.disabled = acceptBtn.disabled || offerWaiting;
 

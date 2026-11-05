@@ -302,6 +302,25 @@ body {
   color: var(--ink);
 }
 
+/* no documents yet: Submit is a quiet inset pill with the reason under it, Add evidence is the dark one */
+.btn.btn-await:disabled {
+  background: var(--inset);
+  border-color: transparent;
+  color: var(--muted);
+  opacity: 1;
+}
+
+.submit-why {
+  margin: -4px 0 0;
+  text-align: center;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.submit-why[hidden] {
+  display: none;
+}
+
 kbd {
   font: inherit;
   font-size: 11px;

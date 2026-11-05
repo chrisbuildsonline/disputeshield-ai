@@ -29,6 +29,37 @@ const REC: Record<RecAction, [label: string, tone: string]> = {
   accept: ["Accept", "badge-red"],
 };
 
+/** A slow step: its plain label (what a screen reader hears) and when it began (what the counter counts from). */
+interface Step {
+  label: string;
+  since: number;
+}
+
+const secsSince = (since: number) => Math.floor((Date.now() - since) / 1000);
+let ticker = 0;
+
+/** "· 12 s", hidden from assistive tech so the seconds are never announced. One timer updates every counter on the page and stops when none is left. */
+function elapsed(since: number): string {
+  if (!ticker) {
+    ticker = window.setInterval(() => {
+      const counters = document.querySelectorAll<HTMLElement>(".elapsed");
+      if (!counters.length) stopTicker();
+      counters.forEach((c) => (c.textContent = `· ${secsSince(Number(c.dataset.since))} s`));
+    }, 1000);
+  }
+  return `<span class="elapsed" aria-hidden="true" data-since="${since}">· ${secsSince(since)} s</span>`;
+}
+
+function stopTicker(): void {
+  window.clearInterval(ticker);
+  ticker = 0;
+}
+
+const stepPill = (s: Step) => `<p class="step"><span class="spinner" aria-hidden="true"></span><span>${esc(s.label)} ${elapsed(s.since)}</span></p>`;
+
+/** The step names the model only when one is called, never a made-up one. */
+const withModel = (what: string, model: string | null) => (model ? `${what} with ${model}` : what);
+
 /** Audit actions that hold the one-act-per-dispute claim: after these nothing more can be sent. */
 const ANSWERED = new Set(["submitted", "accepted", "accept_unconfirmed", "offer_unconfirmed"]);
 
@@ -197,11 +228,12 @@ function renderScore(score: Score): string {
 }
 
 /** The recorded line sits under the evidence cards, or under the note when only the note was recorded. */
-function renderDossier(d: Dossier | null, noteError: boolean, score: Score): string {
+function renderDossier(d: Dossier | null, noteError: boolean, score: Score, writing: Step): string {
   if (!d) {
+    // the step is read out once, by the live region (announce); this line is for the eyes
     return noteError
       ? `<p class="muted note-pending" role="status">The rebuttal note could not be loaded. Submit still sends it.</p>`
-      : `<p class="muted loading note-pending" role="status"><span class="spinner" aria-hidden="true"></span>Writing the rebuttal note…</p>`;
+      : `<p class="muted loading note-pending" aria-hidden="true"><span class="spinner" aria-hidden="true"></span>${esc(writing.label)} ${elapsed(writing.since)}</p>`;
   }
   const docLine = score.documents.some((x) => x.evidence.source === "recorded");
   const line = docLine ? "" : recordedLine(score, d);
@@ -384,17 +416,36 @@ export function createDetail(opts: { onClose: (id: string) => void; onSubmitted:
   let invoiceError: string | null = null;
   let invoiceBusy: string | null = null; // the dispute id being recorded, so a switch of case can't unlock another one
   let adding: string | null = null; // the dispute id a PDF is being read for
+  let addStep: Step | null = null; // what that read is doing right now
   let evidenceError: string | null = null;
+  let submitStep: Step | null = null; // while `sending`: writing the note, then the send
+  let noteWriting: Step = { label: "Writing the rebuttal note…", since: Date.now() };
+  let noteLoad: Promise<void> = Promise.resolve(); // the /dossier request in flight, shared with a submit that needs the note
+  // which model runs the slow steps, and whether a submit really calls PayPal: the server says, the console never guesses
+  let llmModel: string | null = null;
+  let paypalLive = false;
+  void api<{ llm_model?: string | null; paypal?: boolean }>("/api/config")
+    .then((c) => {
+      llmModel = c.llm_model ?? null;
+      paypalLive = !!c.paypal;
+    })
+    .catch(() => undefined);
+
+  // one polite live region outside every repainted area: it hears each step change once, never the ticking seconds
+  const liveRegion = el("progress-live");
+  const announce = (text: string) => void (liveRegion.textContent = text);
+  const unannounce = (text: string) => liveRegion.textContent === text && announce("");
 
   /** The evidence section: heading, the Add evidence pill with its hidden file input, any error, the cards or the empty hint. */
   function renderEvidenceBox(sc: Score): string {
     const busy = adding !== null && adding === current?.id;
     const label = busy ? `<span class="spinner" aria-hidden="true"></span>Reading…` : "Add evidence";
     const err = evidenceError ? `<div class="banner banner-bad" role="alert"><span>${esc(evidenceError)}</span></div>` : "";
+    const step = busy && addStep ? stepPill(addStep) : "";
     const recorded = sc.documents.some((d) => d.evidence.source === "recorded");
     return `<h3 id="h-evidence">Extracted evidence</h3>
       <div class="add-row"><button id="add-evidence-btn" class="btn add-btn" type="button"${busy ? ' disabled aria-busy="true"' : ""}>${label}</button>
-      <input id="evidence-file" type="file" accept="application/pdf" hidden></div>${err}
+      <input id="evidence-file" type="file" accept="application/pdf" hidden></div>${step}${err}
       ${renderEvidence(sc, current?.currency ?? null)}${recorded ? recordedLine(sc, dossier) : ""}`;
   }
 
@@ -409,6 +460,13 @@ export function createDetail(opts: { onClose: (id: string) => void; onSubmitted:
     const here = () => current?.id === d.id;
     adding = d.id;
     evidenceError = null;
+    const step = (label: string) => {
+      addStep = { label, since: Date.now() };
+      if (here()) {
+        paintEvidence();
+        announce(label);
+      }
+    };
     paintEvidence();
     let added = false;
     try {
@@ -417,6 +475,7 @@ export function createDetail(opts: { onClose: (id: string) => void; onSubmitted:
           evidenceError = "That file isn't a PDF.";
           break;
         }
+        step(withModel(`Reading ${f.name}`, llmModel));
         await postFile(`/api/disputes/${encodeURIComponent(d.id)}/documents?name=${encodeURIComponent(f.name)}`, f);
         added = true;
       }
@@ -424,6 +483,7 @@ export function createDetail(opts: { onClose: (id: string) => void; onSubmitted:
       if (here()) evidenceError = uploadErrorText(e);
     }
     if (added && here()) {
+      step("Scoring the case");
       // the new read and score; if this fails the old ones stay and the next open shows the card
       const s = await api<Score>(`/api/disputes/${encodeURIComponent(d.id)}/score`).catch(() => null);
       if (s && here()) {
@@ -432,7 +492,9 @@ export function createDetail(opts: { onClose: (id: string) => void; onSubmitted:
       }
     }
     adding = null;
+    addStep = null;
     if (here()) {
+      announce("");
       paintBody();
       paintHeader(); // the score can cross the fight line, which moves the dark pill
       if (added) void loadDossier(d); // new documents, new note
@@ -518,9 +580,14 @@ export function createDetail(opts: { onClose: (id: string) => void; onSubmitted:
     const done = !needsAction(current) || busy || audit.some((a) => a.action === "submitted");
     button.disabled = done || !score;
     button.classList.toggle("btn-done", !needsAction(current) && did !== "offered");
-    button.textContent = sending
-      ? "Submitting..."
-      : !needsAction(current)
+    if (sending) {
+      // the step in the button is for the eyes; the live region above it reads each change out once
+      button.setAttribute("aria-busy", "true");
+      const s = submitStep ?? { label: "Submitting…", since: Date.now() };
+      button.innerHTML = `<span class="spinner" aria-hidden="true"></span><span>${esc(s.label)} ${submitStep ? elapsed(s.since) : ""}</span>`;
+    } else {
+      button.removeAttribute("aria-busy");
+      button.textContent = !needsAction(current)
         ? did === "accepted"
           ? "Claim accepted"
           : did === "offered" && offerWaiting
@@ -529,6 +596,7 @@ export function createDetail(opts: { onClose: (id: string) => void; onSubmitted:
               ? "Closed"
               : "Evidence submitted"
         : "Submit evidence";
+    }
 
     // below the fight line the settle actions take over the dark pill; Submit evidence stays as the way to fight anyway
     const rec = score?.recommendation.action;
@@ -660,7 +728,7 @@ export function createDetail(opts: { onClose: (id: string) => void; onSubmitted:
       <section aria-labelledby="h-score"><h3 id="h-score">Win probability</h3>${renderScore(score)}</section>
       <section aria-labelledby="h-evidence"><div id="evidence-box" class="drop" data-drop>${renderEvidenceBox(score)}</div></section>
       <section aria-labelledby="h-invoice"><h3 id="h-invoice">PayPal invoice</h3><div id="invoice-box" aria-live="polite">${renderInvoice()}</div></section>
-      <section id="dossier-sec" aria-labelledby="h-dossier"><h3 id="h-dossier">Dossier preview</h3>${renderDossier(dossier, noteError, score)}</section>
+      <section id="dossier-sec" aria-labelledby="h-dossier"><h3 id="h-dossier">Dossier preview</h3>${renderDossier(dossier, noteError, score, noteWriting)}</section>
       <section aria-labelledby="h-audit"><h3 id="h-audit">Audit trail</h3><div id="audit-list">${renderAudit(audit)}</div></section>`;
   }
 
@@ -670,29 +738,37 @@ export function createDetail(opts: { onClose: (id: string) => void; onSubmitted:
     const sec = document.getElementById("dossier-sec");
     if (!sec || !score) return;
     sec.querySelectorAll(":scope > :not(h3)").forEach((n) => n.remove());
-    sec.insertAdjacentHTML("beforeend", renderDossier(dossier, noteError, score));
+    sec.insertAdjacentHTML("beforeend", renderDossier(dossier, noteError, score, noteWriting));
   }
 
   /** The rebuttal note, after the score has painted: a model call can take a minute. Once per case + document set. */
-  async function loadDossier(d: Dispute): Promise<void> {
-    if (!score) return;
+  function loadDossier(d: Dispute): Promise<void> {
+    if (!score) return Promise.resolve();
     const key = `${d.id}|${score.documents.map((x) => `${x.name}:${x.size}`).join("|")}`;
-    if (noteKey === key) return;
+    if (noteKey === key) return noteLoad; // a submit that needs the note waits on this same request
     noteKey = key;
     dossier = null;
     noteError = false;
+    noteWriting = { label: withModel("Writing the rebuttal note", llmModel), since: Date.now() };
+    const writing = noteWriting.label;
     paintDossier();
-    try {
-      const n = await api<Dossier>(`/api/disputes/${encodeURIComponent(d.id)}/dossier`);
-      if (current?.id !== d.id || noteKey !== key) return;
-      dossier = n;
-    } catch {
-      if (current?.id !== d.id || noteKey !== key) return;
-      noteError = true;
-      noteKey = ""; // the next change of the row tries again
-    }
-    paintDossier();
-    if (score.documents.some((x) => x.evidence.source === "recorded")) paintEvidence(); // its recorded line also names the note's model
+    announce(writing);
+    noteLoad = (async () => {
+      try {
+        const n = await api<Dossier>(`/api/disputes/${encodeURIComponent(d.id)}/dossier`);
+        if (current?.id !== d.id || noteKey !== key) return;
+        dossier = n;
+      } catch {
+        if (current?.id !== d.id || noteKey !== key) return;
+        noteError = true;
+        noteKey = ""; // the next change of the row tries again
+      } finally {
+        unannounce(writing);
+      }
+      paintDossier();
+      if (score?.documents.some((x) => x.evidence.source === "recorded")) paintEvidence(); // its recorded line also names the note's model
+    })();
+    return noteLoad;
   }
 
   /** quiet: the score is already on screen, so refresh it in place (no loading state, no repaint unless it changed). */
@@ -750,10 +826,22 @@ export function createDetail(opts: { onClose: (id: string) => void; onSubmitted:
     if (!current || sending) return;
     const d = current;
     sending = true;
-    result.innerHTML = "";
     delete result.dataset.shown;
-    paintHeader();
+    // the live region (#submit-result) hears each step change once; the counters inside it are aria-hidden
+    const step = (label: string) => {
+      submitStep = { label, since: Date.now() };
+      if (current?.id !== d.id) return;
+      result.innerHTML = stepPill(submitStep);
+      paintHeader();
+    };
+    result.innerHTML = "";
     try {
+      // the server builds the note and sends in one request, so the note is awaited here first: it is cached, and the submit reuses it
+      if (!dossier) {
+        step(withModel("Writing the rebuttal note", llmModel));
+        await loadDossier(d);
+      }
+      step(d.source === "paypal" && paypalLive ? "Sending evidence to PayPal" : "Recording the evidence (demo, not sent to PayPal)");
       const r = await api<SubmitResult>(`/api/disputes/${encodeURIComponent(d.id)}/submit`, "POST");
       if (current?.id === d.id) {
         current = { ...d, status: r.status };
@@ -764,6 +852,7 @@ export function createDetail(opts: { onClose: (id: string) => void; onSubmitted:
       if (current?.id === d.id) showBanner("Not submitted", errorText(e), "bad");
     } finally {
       sending = false;
+      submitStep = null;
       if (current?.id === d.id) {
         paintHeader();
         // the button just went disabled and took focus with it: hand it to the result so it is read out and Escape still works
@@ -855,6 +944,8 @@ export function createDetail(opts: { onClose: (id: string) => void; onSubmitted:
     const id = current.id;
     current = null;
     panel.hidden = true;
+    stopTicker(); // nothing on screen counts any more; reopening the case repaints its step, which starts the clock again
+    announce("");
     opts.onClose(id);
   }
 
@@ -864,6 +955,8 @@ export function createDetail(opts: { onClose: (id: string) => void; onSubmitted:
       audit = [];
       auditJson = "";
       sending = false;
+      submitStep = null;
+      announce("");
       acted = null;
       invoice = null;
       invoiceError = null;

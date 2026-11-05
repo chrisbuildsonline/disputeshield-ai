@@ -582,9 +582,7 @@ kbd {
 
 .kpi-link .kpi-foot {
   max-width: 100%;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  overflow-wrap: anywhere;
 }
 
 .kpi-id {
@@ -1506,9 +1504,7 @@ kbd {
 #kpi-link-id {
   display: inline-block;
   max-width: 100%;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  overflow-wrap: anywhere;
   vertical-align: bottom;
 }
 
@@ -2008,6 +2004,9 @@ kbd {
 
   #kpi-link-id {
     display: block;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
 
   #kpi-risk-foot .foot-n {

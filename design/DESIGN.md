@@ -75,6 +75,13 @@ DOM. Success hides after 10s; errors stay until dismissed. A Dismiss button clos
     card and the case sheet all show a muted em dash. In the sheet it is the 40px "—" with the muted
     line "Upload evidence to score" beside it (no bar); the rulebook baseline is not shown as a
     percentage. The number appears in all three once evidence is added.
+  - **F31, unscored case:** the same no-document state reads as one thing in the whole sheet. The
+    Recommended pill says "Add evidence" (muted tint, never Fight / Offer refund / Accept), the factor
+    ledger and the "Starting point" row are hidden, and Offer refund / Accept claim stay available but
+    neither is the dark pill (no verdict yet, so none is recommended). Submit evidence stays but is disabled as a quiet inset pill (no dark fill, full opacity)
+    with the muted 13px reason "Upload a document first" under it. The Add evidence control takes the
+    near-black pill (`btn-primary`) as the one next action. After the first upload everything flips back
+    in place, with no reload: score, ledger, Recommended, dark Submit.
 - **Money** (ref 3): `Intl.NumberFormat` in the dispute's own currency (en-US): `€128.00`,
   `£86.40`, `NOK 1,299.00`. Whole units in ink 700; the decimals and a multi-letter code muted 500,
   so a column of amounts reads by magnitude. Right-aligned, tabular figures.

@@ -109,6 +109,13 @@ test("an upload names the file and the model, ticks, then moves on to scoring an
     await new Promise((r) => setTimeout(r, 1500));
     await route.continue();
   });
+  // and hold the upload itself too: the server's 2 s read delay is shorter than a slow full run needs to screenshot and
+  // check the live region, so the "Reading" step could be gone before the test looked at it
+  await page.route("**/api/disputes/*/documents", async (route) => {
+    await new Promise((r) => setTimeout(r, 3000));
+    await route.continue();
+  });
+  await page.clock.install();
   const id = await bareCase(page);
   await page.goto("/#token=e2e-token");
   const panel = await openCase(page, id);
@@ -116,13 +123,13 @@ test("an upload names the file and the model, ticks, then moves on to scoring an
 
   await upload(panel);
   await expect(step).toContainText("Reading ups_receipt.pdf with qwen3:8b");
+  await expect(live(page)).toHaveText("Reading ups_receipt.pdf with qwen3:8b"); // a step change, no seconds; checked first, while the step is still the current one
   await expect(step.locator(".elapsed")).toHaveText(/· \d+ s/);
   await expect(step.locator(".elapsed")).toHaveAttribute("aria-hidden", "true"); // the seconds are never announced
   await expect(panel.getByRole("button", { name: /Reading/ })).toBeDisabled();
-  await expect(step.locator(".elapsed")).toHaveText("· 1 s"); // it ticks
-  await step.scrollIntoViewIfNeeded();
+  await page.clock.fastForward(1500); // the page's own clock jumps, so the tick does not depend on how loaded the machine is
+  await expect(step.locator(".elapsed")).toHaveText(/· [1-9]\d* s/); // it ticks
   await page.screenshot({ path: `${SHOTS}/f27-upload-desktop.png` });
-  await expect(live(page)).toHaveText("Reading ups_receipt.pdf with qwen3:8b"); // a step change, no seconds
   await expect(step).toContainText("Scoring the case");
   await expect(live(page)).toHaveText("Scoring the case");
   await expect(panel.locator("#evidence-box .card").first()).toBeVisible();

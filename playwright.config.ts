@@ -18,8 +18,9 @@ const baseURL = process.env.E2E_BASE_URL || `http://127.0.0.1:${port}`;
 export default defineConfig({
   testDir: "e2e",
   workers: 1, // one shared database, so tests run one after another
-  // the request fixture (and the page) send the token too; the token spec clears this to act like a stranger
-  use: { baseURL, extraHTTPHeaders: { Authorization: "Bearer e2e-token" } },
+  // the request fixture (and the page) send the token too; the token spec clears this to act like a stranger.
+  // X-Demo-Scenario pins Simulate chargeback to the Leeds walkthrough case; f30-simulate.spec.ts drops it to see the rotation.
+  use: { baseURL, extraHTTPHeaders: { Authorization: "Bearer e2e-token", "X-Demo-Scenario": "leeds" } },
   projects: [{ name: "chromium", use: { ...devices["Desktop Chrome"] } }],
   webServer: process.env.E2E_BASE_URL ? undefined : {
     command: `bun run build && uv run uvicorn app.main:app --port ${port}`,

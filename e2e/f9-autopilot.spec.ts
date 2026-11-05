@@ -27,6 +27,7 @@ async function simulate(page: Page): Promise<string> {
 }
 
 test("autopilot sends a chargeback on its own, and leaves the next one for review when switched off", async ({ page }) => {
+  test.setTimeout(90_000); // the row search above may cross a long list
   const errors = watchErrors(page);
   await page.goto("/#token=e2e-token");
   const toggle = page.getByRole("switch", { name: "Autopilot" });
@@ -53,11 +54,11 @@ test("autopilot sends a chargeback on its own, and leaves the next one for revie
           while (v && v !== grid && !(v.scrollHeight > v.clientHeight + 1 && /auto|scroll/.test(getComputedStyle(v).overflowY))) v = v.parentElement;
           if (v && v !== grid) {
             const atEnd = v.scrollTop + v.clientHeight >= v.scrollHeight - 1;
-            v.scrollTo(0, atEnd ? 0 : v.scrollTop + v.clientHeight / 2);
+            v.scrollTo(0, atEnd ? 0 : v.scrollTop + v.clientHeight);
           }
           return "";
         }, sentId),
-      { timeout: 15000 },
+      { timeout: 45000, intervals: [250] }, // a full screen per step, so a long list is crossed in a few polls
     )
     .toBe("Under review"); // the grid repaints on its next poll
   await expect(sent).toHaveClass(/row-submitted/);

@@ -91,6 +91,9 @@ DOM. Success hides after 10s; errors stay until dismissed. A Dismiss button clos
   running under it, and drops the columns the panel already says, in this order, until the rest
   fit: Source, Reason, Amount, Respond within, Win %. Status pills are never cut off. At 1440 the
   grid keeps Dispute, Status, Win % and Respond within. Every column comes back on Close.
+- **KPI strip with the panel open** (>= 1100px): the strip stops 16px left of the panel too and
+  the four cards reflow into a 2x2 grid (16px gap), so none is clipped or hidden. Money at risk
+  lists its currencies one per line in the narrower cell. Four in a row again on Close.
 - **Empty state** (inside the grid surface, never AG Grid's "No Rows To Show"): a small two-tone
   SVG (indigo tints: a receipt card with the shield mark), "No disputes yet" 22px/800, one muted
   sentence, then in demo mode "Simulate your first chargeback" (the dark pill) and "Load sample

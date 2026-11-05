@@ -1576,6 +1576,7 @@ kbd {
   text-align: right;
 }
 
+.factor.cap .points,
 .factor.unmet .points {
   color: var(--muted);
 }

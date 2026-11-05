@@ -209,6 +209,13 @@ function renderScore(score: Score): string {
         <span class="points">${f.met ? "+" : ""}${f.points}<span class="sr-only"> points</span></span></li>`,
     )
     .join("");
+  // above the cap the ledger would add up to more than the headline, so a last row takes the difference
+  const cap =
+    score.probability > fmtWin(score.probability)
+      ? `<li class="factor cap"><span class="mark" aria-hidden="true">&#8226;</span>
+        <span class="factor-text"><span>Capped at ${fmtWin(score.probability)}%</span><span class="muted">No chargeback is a sure win</span></span>
+        <span class="points">−${score.probability - fmtWin(score.probability)}</span></li>`
+      : "";
   const [recLabel, recTone] = REC[score.recommendation.action];
   // no documents: the grid and the phone card show a dash, so the sheet does too (the rulebook's 9% is only a baseline)
   const unscored = score.documents.length === 0;
@@ -226,7 +233,7 @@ function renderScore(score: Score): string {
       <p class="rec-reason muted">${esc(unscored ? "No evidence yet, so there is no score. Upload a receipt to see how strong the case is." : score.recommendation.reason)}</p></div>
     <ul class="factors"><li class="factor base"><span class="mark" aria-hidden="true">&#8226;</span>
       <span class="factor-text"><span>Starting point</span><span class="muted">Baseline for this kind of dispute</span></span>
-      <span class="points">${score.base}</span></li>${factors}</ul>`;
+      <span class="points">${score.base}</span></li>${factors}${cap}</ul>`;
 }
 
 /** The recorded line sits under the evidence cards, or under the note when only the note was recorded. */

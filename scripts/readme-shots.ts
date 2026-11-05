@@ -68,6 +68,7 @@ function watch(page: Page): void {
 async function shot(page: Page, name: string): Promise<void> {
   await page.evaluate(() => document.fonts.ready);
   await Bun.sleep(400); // let the panel and toast transitions finish
+  if (/\b100%/.test(await page.locator('body').innerText())) throw new Error(`${name} shows 100%: the display is capped at 95%`);
   const file = join(OUT, name);
   await page.screenshot({ path: file, animations: 'disabled' });
   const size = statSync(file).size;
@@ -122,7 +123,7 @@ try {
   }
   mkdirSync(OUT, { recursive: true });
   browser = await chromium.launch();
-  const desk = await browser.newContext({ viewport: { width: 1440, height: 1200 }, colorScheme: 'light' });
+  const desk = await browser.newContext({ viewport: { width: 1440, height: 1200 }, colorScheme: 'light', extraHTTPHeaders: { 'X-Demo-Scenario': 'leeds' } }); // Simulate chargeback rotates: pin the Leeds walkthrough case
   const page = await desk.newPage();
   watch(page);
   await page.goto(`${BASE}/#token=${TOKEN}`);

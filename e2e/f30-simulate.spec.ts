@@ -23,6 +23,10 @@ interface Made {
 
 test("five clicks on Simulate chargeback give five different cases, strong and weak", async ({ page, request }) => {
   const errors = watchErrors(page);
+  const all = (await (await request.get("/api/disputes")).json()) as { id: string; status: string | null; outcome: string | null }[];
+  for (const d of all) {
+    if (!d.outcome && (d.status === "OPEN" || d.status === "WAITING_FOR_SELLER_RESPONSE")) await request.post(`/api/disputes/${d.id}/accept`);
+  }
   await page.goto("/#token=e2e-token");
   await expect(page.locator("#status")).toHaveText("API online");
 

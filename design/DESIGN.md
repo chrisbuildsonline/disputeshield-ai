@@ -102,6 +102,7 @@ DOM. Success hides after 10s; errors stay until dismissed. A Dismiss button clos
   the four cards reflow into a 2x2 grid (16px gap), so none is clipped or hidden. Money at risk
   lists its currencies one per line in the narrower cell. Four in a row again on Close. The Next
   deadline reason line wraps (the case id breaks anywhere) instead of ellipsizing; text stays 12px+.
+  On a phone (<= 700px) the id stays on its own unbroken line at 12px (F35) so it fits whole, no ellipsis.
 - **Empty state** (inside the grid surface, never AG Grid's "No Rows To Show"): a small two-tone
   SVG (indigo tints: a receipt card with the shield mark), "No disputes yet" 22px/800, one muted
   sentence, then in demo mode "Simulate your first chargeback" (the dark pill) and "Load sample

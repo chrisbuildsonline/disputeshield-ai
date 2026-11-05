@@ -7,7 +7,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from app import paypal, scorecard, store
 from app.extract import ExtractedEvidence
-from app.scoring import score
+from app.scoring import display_win, score
 
 router = APIRouter()
 
@@ -98,7 +98,7 @@ async def _run(dispute_id: str) -> None:
     elif result.probability < settings["threshold"]:
         _flag(
             dispute_id,
-            f"Win probability {result.probability}% is below the {settings['threshold']}% threshold",
+            f"Win probability {display_win(result.probability)}% is below the {settings['threshold']}% threshold",
             *[f.label for f in result.factors if not f.met],
         )
     elif not settings["enabled"]:  # nothing wrong: the person just hasn't sent it yet

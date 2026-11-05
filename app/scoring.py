@@ -196,8 +196,18 @@ FIGHT_AT = 60  # win probability at or above this: fight with evidence
 ACCEPT_BELOW = 30  # below this: not worth fighting, accept the claim; in between, offer a refund
 
 
+DISPLAY_CAP = 95  # no chargeback is a sure thing: a person never sees a win chance above this
+
+
+def display_win(probability: int) -> int:
+    """The win chance as shown to a person: the raw score, capped. Scoring and the API's raw value are unchanged."""
+    return min(probability, DISPLAY_CAP)
+
+
 def recommend(probability: int) -> tuple[str, str]:
     """(action, plain-English reason) for a win probability: "fight", "offer_refund" or "accept"."""
+    if probability > DISPLAY_CAP:
+        return "fight", f"Strong case: about a {DISPLAY_CAP}% chance of winning, above the {FIGHT_AT}% line, so the evidence is worth sending."
     if probability >= FIGHT_AT:
         return "fight", f"A {probability}% chance of winning is at or above {FIGHT_AT}%, so the evidence is worth sending."
     if probability >= ACCEPT_BELOW:

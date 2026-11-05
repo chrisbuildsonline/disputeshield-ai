@@ -9,7 +9,7 @@ import pytest
 from hypothesis import given
 from hypothesis import strategies as st
 
-from app.scoring import ACCEPT_BELOW, FIGHT_AT, Dispute, Evidence, ScoreResult, recommend, score
+from app.scoring import ACCEPT_BELOW, FIGHT_AT, Dispute, Evidence, ScoreResult, display_win, recommend, score
 
 INR = "MERCHANDISE_OR_SERVICE_NOT_RECEIVED"
 UNAUTH = "UNAUTHORISED"
@@ -222,7 +222,7 @@ def test_monotonic_when_enabling_a_field(d: Dispute, e: Evidence, i: int) -> Non
 def test_recommend_boundaries(p: int, action: str) -> None:
     got, reason = recommend(p)
     assert got == action
-    assert str(p) in reason
+    assert str(display_win(p)) in reason  # the prose shows the capped number
     assert reason.endswith(".")
 
 

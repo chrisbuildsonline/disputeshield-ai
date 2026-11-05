@@ -65,6 +65,7 @@ DOM. Success hides after 10s; errors stay until dismissed. A Dismiss button clos
   - *Next deadline*: urgency pill top-right ("1d 5h left" or "5m left", the grid's own countdown text: red under 48 h, amber under 96 h,
     neutral after); body is a quiet button with that case's amount (28px) and reason + id (id in
     the indigo accent); it opens the case.
+  - **F28, win chance cap:** a win chance never displays above 95% (a raw score of 96-100 shows "95%") in the grid, phone card, case sheet, Recommended copy, KPI average (of the capped values), audit lines and toasts; the raw score stays in the API.
   - Empty values are an em dash, counts are 0. Never "null", "NaN" or a blank card.
   - **F25, phone (up to 700px):** *Money at risk* shows the first currency as the one main total
     (26px/800) and a muted 13px "+N currencies" native `<details>` under it that opens the rest at

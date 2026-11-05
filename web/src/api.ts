@@ -237,6 +237,9 @@ export const ACCEPT_BELOW = 30;
 
 export type Band = "fight" | "offer" | "accept";
 
+/** The win chance a person reads: never above 95%, since no chargeback is a sure thing (the raw score stays in the API). */
+export const fmtWin = (probability: number): number => Math.min(probability, 95);
+
 /** Every coloured win probability uses this: green fight, amber offer a refund, red accept. */
 export function winBand(probability: number): { band: Band; tone: "green" | "amber" | "red" } {
   if (probability >= FIGHT_AT) return { band: "fight", tone: "green" };

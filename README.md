@@ -2,7 +2,7 @@
 
 Chargeback defense for PayPal merchants. It takes in PayPal dispute webhooks, reads your shipping and order PDFs, scores your chances of winning, and sends the evidence to PayPal.
 
-![The console: six disputes, the KPI strip, and the walkthrough case open at 100% with the UPS receipt read by qwen3:8b](docs/screenshots/hero.png)
+![The console: six disputes, the KPI strip, and the walkthrough case open at 95% with the UPS receipt read by qwen3:8b](docs/screenshots/hero.png)
 
 - Code: https://github.com/chrisbuildsonline/disputeshield-ai
 - Built for the [PayPal AI Hackathon](https://paypalaihackathon.devpost.com/).
@@ -39,12 +39,12 @@ For a merchant who sells goods and ships them with a carrier:
 
 The first three controls are in the page header, the last one is on the empty table:
 
-- **Simulate chargeback** (demo mode only) creates an "item not received" dispute for USD 49.90 and attaches the sample UPS receipt (`samples/ups_receipt.pdf`). The model reads it, and the case scores 100%: the receipt has the tracking number, the delivery, the billing address, a signature, the amount and the order id A-1042, so every factor is met.
+- **Simulate chargeback** (demo mode only) creates an "item not received" dispute for USD 49.90 and attaches the sample UPS receipt (`samples/ups_receipt.pdf`). The model reads it, and the case scores a raw 100 and the console shows 95%: the receipt has the tracking number, the delivery, the billing address, a signature, the amount and the order id A-1042, so every factor is met.
 - **Sync from PayPal** pulls your sandbox disputes. It needs keys (see below).
 - **Autopilot** is a switch, with a **Threshold** field next to it (default 85). See [Autopilot](#autopilot).
-- **Load sample disputes** adds five made-up cases in four currencies, scored from 25% to 100%. They load at once, with no model call: their receipts are the sample PDFs, and the console shows the reads that a real qwen3:8b run recorded on those exact files (`samples/recorded.json`), so the evidence cards say "Recorded" with the model name. See [Recorded reads](#recorded-reads).
+- **Load sample disputes** adds five made-up cases in four currencies, scored from 25% to 95%. They load at once, with no model call: their receipts are the sample PDFs, and the console shows the reads that a real qwen3:8b run recorded on those exact files (`samples/recorded.json`), so the evidence cards say "Recorded" with the model name. See [Recorded reads](#recorded-reads).
 
-Click a row to open it. With autopilot off, the audit trail says "Auto-check: scored 100%, waiting for your review" and the case is not flagged. Click "Submit evidence". In demo mode nothing leaves your machine, and the panel says "Demo mode: nothing was sent to PayPal". The audit trail lists each step. In the screenshot below, the model wrote the rebuttal note and it passed the fact check, so its badge says "AI · qwen3:8b". A note that fails the check is replaced by the fixed template, and the badge says "Template".
+Click a row to open it. With autopilot off, the audit trail says "Auto-check: scored 95%, waiting for your review" and the case is not flagged. Click "Submit evidence". In demo mode nothing leaves your machine, and the panel says "Demo mode: nothing was sent to PayPal". The audit trail lists each step. In the screenshot below, the model wrote the rebuttal note and it passed the fact check, so its badge says "AI · qwen3:8b". A note that fails the check is replaced by the fixed template, and the badge says "Template".
 
 ![Evidence submitted in demo mode: the model's rebuttal note, the audit trail and the "nothing was sent to PayPal" banner](docs/screenshots/submitted.png)
 
@@ -219,9 +219,9 @@ It runs when a new dispute webhook arrives and when you add a document to a disp
 - Below the threshold, or with no documents, or on an error, it does not submit (autopilot on or off). It flags the dispute "Needs review" and lists the reasons, including the score factors that were not met.
 - Closed disputes and disputes that were already submitted are skipped.
 
-Each step is written to the audit log. The demo chargeback always runs the agent once, so with autopilot off a well-scored case gets an "autopilot_awaiting" audit row ("scored 100%, waiting for your review") and no "Needs review" flag. With it on, the next "Simulate chargeback" is read, scored 100% and submitted with no click, and the console says so in a toast.
+Each step is written to the audit log. The demo chargeback always runs the agent once, so with autopilot off a well-scored case gets an "autopilot_awaiting" audit row ("scored 95%, waiting for your review") and no "Needs review" flag. With it on, the next "Simulate chargeback" is read, scored 95% and submitted with no click, and the console says so in a toast.
 
-![Autopilot on: the new chargeback was submitted by itself and the toast reports a 100% win probability](docs/screenshots/autopilot.png)
+![Autopilot on: the new chargeback was submitted by itself and the toast reports a 95% win probability](docs/screenshots/autopilot.png)
 
 ## Architecture
 
@@ -276,7 +276,7 @@ For "item not received" the base is 9 and the factors are:
 | Order amount matches the dispute | 10 |
 | Order ID on file | 6 |
 
-That adds up to 100. The sample UPS receipt carries every item, order id included, so the walkthrough case passes every check and scores 100. A receipt without an order id would score 94; uploading the sample CRM order export (`samples/crm_order.pdf`) as well supplies it.
+That adds up to 100. The sample UPS receipt carries every item, order id included, so the walkthrough case passes every check and scores 100. The console never shows more than 95%, because no chargeback is a sure thing: a raw score of 96 to 100 displays as 95%. A receipt without an order id would score 94; uploading the sample CRM order export (`samples/crm_order.pdf`) as well supplies it.
 
 There are rulebooks for unauthorised use, item not as described, and a catch-all for other reasons. Some of their factors (address and card checks, prior orders, item matches the listing, refund offered) have no PDF extractor yet, so today they always count as not met.
 

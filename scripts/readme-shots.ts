@@ -133,13 +133,13 @@ try {
   await page.locator('.ag-row').nth(4).waitFor(WAIT);
   const id = await simulate(page);
   const row = page.locator(`.ag-row[row-id="${id}"]`);
-  await row.locator('[col-id="win"]').filter({ hasText: '100%' }).waitFor(WAIT);
+  await row.locator('[col-id="win"]').filter({ hasText: '95%' }).waitFor(WAIT);
   const panel = await openRow(page, id);
   // autopilot is off: the case is scored and left for review, with no flag (and no toast)
-  await panel.getByText('Auto-check: scored 100%, waiting for your review').waitFor(WAIT);
+  await panel.getByText('Auto-check: scored 95%, waiting for your review').waitFor(WAIT);
   await expectAi(panel, id);
   const win = (await panel.locator('.score-num').innerText()).trim();
-  if (win !== '100%') throw new Error(`the README says the walkthrough scores 100%, the panel shows ${win}`);
+  if (win !== '95%') throw new Error(`the README says the walkthrough shows 95%, the panel shows ${win}`);
   await panel.getByText('1Z999AA10123456784', { exact: true }).waitFor();
   await shot(page, 'hero.png');
 

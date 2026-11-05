@@ -27,6 +27,7 @@ import {
   type Summary,
   type SyncResult,
   winBand,
+  fmtWin,
 } from "./api";
 import { createDetail, errorText } from "./detail";
 
@@ -90,8 +91,9 @@ const statusHtml = (d: Dispute) =>
     d.review_reasons ? badge("Needs review", "badge-amber") : ""
   }</span>`;
 
-function winHtml(w: number | null | undefined): string {
-  if (w === null || w === undefined) return `<span class="muted" title="Upload a document to score this case">&mdash;</span>`;
+function winHtml(raw: number | null | undefined): string {
+  if (raw === null || raw === undefined) return `<span class="muted" title="Upload a document to score this case">&mdash;</span>`;
+  const w = fmtWin(raw);
   const { band, tone } = winBand(w);
   return `<span class="win" data-band="${band}">${badge(`${w}%`, `badge-${tone}`)}<span class="meter meter-${tone}" aria-hidden="true"><span style="width:${w}%"></span></span></span>`;
 }
@@ -211,7 +213,7 @@ function cardHtml(d: Dispute): string {
 
 function cardName(d: Dispute): string {
   const due = needsAction(d) ? timeLeft(d.seller_response_due_date).text : d.outcome ? "closed" : "answered";
-  const win = d.win_probability === null ? "not scored" : `win chance ${d.win_probability}%`;
+  const win = d.win_probability === null ? "not scored" : `win chance ${fmtWin(d.win_probability)}%`;
   return `Dispute ${d.id}, ${money(d.amount_value, d.currency)}, ${statusLabel(d.status)}${d.review_reasons ? ", needs review" : ""}, ${win}, ${due}`;
 }
 
@@ -436,7 +438,7 @@ async function reportAutopilot(d: Dispute): Promise<void> {
   }
   const x = last.detail;
   if (last.action === "autopilot_submitted") {
-    toast("good", `Autopilot submitted evidence for ${d.id}`, [`Win probability ${String(x.probability)}% · status ${statusLabel(String(x.status))}`], simulateBtn);
+    toast("good", `Autopilot submitted evidence for ${d.id}`, [`Win probability ${fmtWin(Number(x.probability))}% · status ${statusLabel(String(x.status))}`], simulateBtn);
   } else if (last.action === "autopilot_flagged") {
     toast("warn", `Autopilot flagged ${d.id} for review`, Array.isArray(x.reasons) ? x.reasons.map(String) : [], simulateBtn);
   }

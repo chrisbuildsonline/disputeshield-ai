@@ -112,7 +112,7 @@ def test_summary_seeded(client: TestClient) -> None:
     for d in ds:
         totals[d["currency"]] = totals.get(d["currency"], Decimal(0)) + Decimal(d["amount_value"])
     assert s["at_risk"] == [{"currency": c, "value": f"{totals[c]:.2f}"} for c in sorted(totals)]
-    assert s["avg_win"] == round(sum(EXPECTED.values()) / 5)
+    assert s["avg_win"] == round(sum(min(p, 95) for p in EXPECTED.values()) / 5)  # shown values are capped at 95
     soonest = min(ds, key=lambda d: d["seller_response_due_date"])
     assert s["next_deadline"]["dispute_id"] == soonest["id"]
     assert s["next_deadline"]["due"] == soonest["seller_response_due_date"]

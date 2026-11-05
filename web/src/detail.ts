@@ -18,6 +18,7 @@ import {
   type Score,
   type SubmitResult,
   winBand,
+  fmtWin,
 } from "./api";
 
 const DEMO_LABEL = "Demo mode: nothing was sent to PayPal";
@@ -95,7 +96,7 @@ function auditText(a: AuditRow): string {
       case "autopilot_evidence":
         return `Checked ${String(d.documents ?? 0)} document(s)`;
       case "autopilot_scored":
-        return `Scored the case ${String(d.probability)}%`;
+        return `Scored the case ${fmtWin(Number(d.probability))}%`;
     }
   }
   switch (a.action) {
@@ -129,13 +130,13 @@ function auditText(a: AuditRow): string {
     case "autopilot_evidence":
       return `Autopilot read ${String(d.documents ?? 0)} document(s)`;
     case "autopilot_scored":
-      return `Autopilot scored the case ${String(d.probability)}% (threshold ${String(d.threshold)}%)`;
+      return `Autopilot scored the case ${fmtWin(Number(d.probability))}% (threshold ${String(d.threshold)}%)`;
     case "autopilot_submitted":
       return "Autopilot submitted the evidence";
     case "autopilot_flagged":
       return `Autopilot flagged for review: ${Array.isArray(d.reasons) ? d.reasons.map(String).join("; ") : ""}`;
     case "autopilot_awaiting":
-      return `Auto-check: scored ${String(d.probability)}%, waiting for your review`;
+      return `Auto-check: scored ${fmtWin(Number(d.probability))}%, waiting for your review`;
     case "autopilot_skipped":
       return "Autopilot skipped (closed or already submitted)";
     case "invoice_recorded": {
@@ -217,8 +218,8 @@ function renderScore(score: Score): string {
       <p class="score-hint muted">Upload evidence to score</p>
     </div>`
     : `<div class="score">
-      <div class="score-num ${tone}" aria-label="Win probability ${score.probability} percent">${score.probability}%</div>
-      <div class="score-bar" aria-hidden="true"><span class="${tone}" data-band="${band}" style="width:${score.probability}%"></span></div>
+      <div class="score-num ${tone}" aria-label="Win probability ${fmtWin(score.probability)} percent">${fmtWin(score.probability)}%</div>
+      <div class="score-bar" aria-hidden="true"><span class="${tone}" data-band="${band}" style="width:${fmtWin(score.probability)}%"></span></div>
     </div>`;
   return `${head}
     <div class="rec"><span class="rec-label">Recommended</span><span class="badge rec-pill ${recTone}">${recLabel}</span>
@@ -845,7 +846,7 @@ export function createDetail(opts: { onClose: (id: string) => void; onSubmitted:
       const r = await api<SubmitResult>(`/api/disputes/${encodeURIComponent(d.id)}/submit`, "POST");
       if (current?.id === d.id) {
         current = { ...d, status: r.status };
-        showBanner(r.label, `Status: ${statusLabel(r.status)} · win probability ${r.probability}%`, r.demo ? "info" : "good");
+        showBanner(r.label, `Status: ${statusLabel(r.status)} · win probability ${fmtWin(r.probability)}%`, r.demo ? "info" : "good");
       }
       opts.onSubmitted();
     } catch (e) {

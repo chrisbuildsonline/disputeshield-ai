@@ -11,6 +11,7 @@ from starlette.datastructures import Headers
 
 from app import autopilot, paypal, scorecard, store
 from app.extract import ExtractedEvidence
+from app.scoring import display_win
 
 MAX_BODY = 1024 * 1024
 DISPUTE_EVENTS = {
@@ -192,7 +193,7 @@ def summary() -> dict[str, Any]:
             at_risk[r["currency"]] = at_risk.get(r["currency"], Decimal(0)) + Decimal(r["amount_value"])
         except (InvalidOperation, TypeError):
             pass
-    wins = [r["win_probability"] for r in rows if r["win_probability"] is not None]
+    wins = [display_win(r["win_probability"]) for r in rows if r["win_probability"] is not None]
     dated = [(due, r) for r in rows if (due := _due(r["seller_response_due_date"]))]
     next_deadline = None
     if dated:

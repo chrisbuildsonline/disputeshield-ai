@@ -39,7 +39,7 @@ def health() -> dict[str, bool]:
 
 @app.get("/api/config")
 def config() -> dict[str, bool | str | None]:
-    demo =demo_mode()  # safe to hand out the token: demo mode is sandbox-only, refused at startup otherwise
+    demo = demo_mode()  # safe to hand out the token: demo mode is sandbox-only, refused at startup otherwise
     which = llm.provider()
     claude_model = os.environ.get("DISPUTESHIELD_CLAUDE_MODEL") or DEFAULT_MODEL
     # llm_model: the model the slow steps call (null when none is); paypal: a submit really calls PayPal. The console words its progress from these

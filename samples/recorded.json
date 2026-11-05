@@ -8,7 +8,7 @@
     },
     "7b6a7bafed3a989966e6374ed4b3fac99270fd8cae742118eab947dc05beaba5": {
       "model": "qwen3:8b",
-      "note": "We received order B-2217 for USD 1299.00. The item was shipped via PostNord with tracking number 00370729900123456785. It was delivered on 2026-10-12 11:05:00 to Storgata 14, 0155 Oslo, signed by O Berg. The order amount matches the dispute. We have buyer correspondence on file. We request PayPal to rule in our favour.",
+      "note": "We received order B-2217 for NOK 1299.00. The item was shipped via PostNord with tracking number 00370729900123456785. It was delivered on 2026-10-12 11:05:00 to Storgata 14, 0155 Oslo, signed by O Berg. The order amount matches the dispute. We have buyer correspondence on file. We request PayPal to rule in our favour.",
       "recorded_at": "2026-10-31T18:41:22Z",
       "scenario": "oslo"
     },

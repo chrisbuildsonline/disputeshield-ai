@@ -158,7 +158,8 @@ _TIME_RE = re.compile(r"\b\d{1,2}:\d{2}(?::\d{2})?\b", re.ASCII)
 _NUM = r"\d[\d,]*(?:\.\d+)?"
 _CUR = r"(?:USD|GBP|EUR|NOK|SEK|DKK|CHF|CAD|AUD|dollars?|pounds?|euros?)"
 _MONEY_RE = re.compile(rf"[$£€]\s?{_NUM}|\b{_CUR}\s?{_NUM}|\b{_NUM}\s?{_CUR}\b|\d[\d,]*\.\d+", re.ASCII | re.IGNORECASE)
-_TOKEN_RE = re.compile(r"[A-Za-z0-9_-]+", re.ASCII)
+_CODE_RE = re.compile(r"\b[A-Z]{3}\b", re.ASCII | re.IGNORECASE)
+_TOKEN_RE =re.compile(r"[A-Za-z0-9_-]+", re.ASCII)
 
 
 def _squash(s: str) -> str:
@@ -195,6 +196,8 @@ def fact_check(note: str, dispute: Dispute, evidence: list[ExtractedEvidence]) -
     # dates, times and amounts must appear verbatim (spacing aside) or, for amounts, equal in value
     bad += [t for t in dates + times if _squash(t) not in haystack]
     bad += [t for t in money if _squash(t) not in haystack and _dec("".join(re.findall(_NUM, t)[:1])) not in amounts]
+    cur = (dispute.currency or "").upper()  # an amount written with another currency code is a wrong fact
+    bad += [t for t in money if cur and (m := _CODE_RE.search(t)) and m.group(0).upper() != cur]
     for tok in _tokens(rest):
         if any(c.isdigit() for c in tok) and (any(c.isalpha() for c in tok) or len(tok) >= 5):
             if tok not in corpus_tokens and _squash(tok) not in values:

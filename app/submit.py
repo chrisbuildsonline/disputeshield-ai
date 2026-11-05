@@ -5,10 +5,10 @@ import os
 from datetime import UTC, datetime
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
-from typing import Any, NoReturn
+from typing import Annotated, Any, NoReturn
 from uuid import uuid4
 
-from fastapi import APIRouter, BackgroundTasks, HTTPException, Query, Request
+from fastapi import APIRouter, BackgroundTasks, Header, HTTPException, Query, Request
 from fastapi.concurrency import run_in_threadpool
 from pydantic import BaseModel, Field, ValidationError
 
@@ -192,9 +192,18 @@ def _require_demo_mode() -> None:
 
 
 @router.post("/api/demo/chargeback")
-async def demo_chargeback(background: BackgroundTasks) -> dict[str, Any]:
+async def demo_chargeback(
+    background: BackgroundTasks, x_demo_scenario: Annotated[str | None, Header()] = None
+) -> dict[str, Any]:
+    """The next scenario in turn (by how many simulated cases exist); the X-Demo-Scenario header pins one by key."""
     _require_demo_mode()
-    return await _create_demo(demo.SCENARIOS[0], background, use_llm=_use_llm())
+    if x_demo_scenario:
+        s = next((s for s in demo.SCENARIOS if s.key == x_demo_scenario), None)
+        if s is None:
+            raise HTTPException(422, f"unknown scenario: {x_demo_scenario}")
+    else:
+        s = demo.SCENARIOS[store.count_audit("simulated_chargeback") % len(demo.SCENARIOS)]
+    return await _create_demo(s, background, use_llm=_use_llm())
 
 
 @router.post("/api/demo/seed")

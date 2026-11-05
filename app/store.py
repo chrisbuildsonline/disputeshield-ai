@@ -281,6 +281,11 @@ def invoice_records() -> dict[str, dict[str, Any]]:
     return out
 
 
+def count_audit(action: str) -> int:
+    with closing(_connect()) as conn:
+        return int(conn.execute("SELECT COUNT(*) FROM audit WHERE action = ?", (action,)).fetchone()[0])
+
+
 def list_audit(dispute_id: str) -> list[dict[str, Any]]:
     with closing(_connect()) as conn:
         rows = conn.execute(

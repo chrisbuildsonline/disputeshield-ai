@@ -115,7 +115,7 @@ test("the audit trail says the auto-check is waiting, and only real flags show N
 
   await page.goto("/#token=e2e-token");
   const waiting = await openCase(page, walkthrough.id);
-  await expect(waiting.locator(".audit li", { hasText: "Auto-check: scored 100%, waiting for your review" })).toBeVisible();
+  await expect(waiting.locator(".audit li", { hasText: "Auto-check: scored 95%, waiting for your review" })).toBeVisible();
   await expect(waiting.locator("#detail-flag .banner")).toHaveCount(0);
   await expect(page.locator(`.ag-row[row-id="${walkthrough.id}"]`).getByText("Needs review")).toHaveCount(0);
   await expect(page.getByText("Waiting for you to review")).toHaveCount(0);

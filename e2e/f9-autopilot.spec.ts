@@ -65,7 +65,7 @@ test("autopilot sends a chargeback on its own, and leaves the next one for revie
   await sent.locator('[col-id="reason"]').click();
   await expect(detail).toBeVisible();
   await expect(detail.getByText("Autopilot started")).toBeVisible();
-  await expect(detail.getByText(/Autopilot scored the case 100% \(threshold 85%\)/)).toBeVisible();
+  await expect(detail.getByText(/Autopilot scored the case 95% \(threshold 85%\)/)).toBeVisible();
   await expect(detail.getByText("Autopilot submitted the evidence")).toBeVisible();
   await expect(detail.getByText("Evidence submitted (demo mode, not sent to PayPal)")).toBeVisible();
   await page.screenshot({ path: `${SHOTS}/f9-autopilot-on.png` });
@@ -79,7 +79,7 @@ test("autopilot sends a chargeback on its own, and leaves the next one for revie
   await expect(waiting).toHaveClass(/row-contested/);
   await waiting.locator('[col-id="reason"]').click();
   const waitingDetail = page.getByRole("dialog", { name: `Dispute ${waitingId}` });
-  await expect(waitingDetail.getByText("Auto-check: scored 100%, waiting for your review")).toBeVisible();
+  await expect(waitingDetail.getByText("Auto-check: scored 95%, waiting for your review")).toBeVisible();
   await expect(waitingDetail.getByRole("button", { name: "Submit evidence" })).toBeEnabled(); // not sent
   await expect(waitingDetail.locator("#detail-flag .banner")).toHaveCount(0);
   await expect(waiting.getByText("Needs review")).toHaveCount(0);

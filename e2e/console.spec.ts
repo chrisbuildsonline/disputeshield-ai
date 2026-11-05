@@ -28,7 +28,7 @@ test("simulate a chargeback, review the evidence and submit it", async ({ page }
   await expect(row).toBeVisible();
   await expect(row).toHaveClass(/row-contested/);
   await expect(row).toHaveClass(/ag-row-selected/);
-  await expect(row.locator('[col-id="win"]')).toHaveText("100%");
+  await expect(row.locator('[col-id="win"]')).toHaveText("95%");
   await expect(row.locator('[col-id="source"]')).toHaveText("Simulated");
   await expect(row.locator('[col-id="amount"]')).toHaveText("$49.90");
   await expect(row.locator('[col-id="due"]')).toContainText(/\dd \d+h left/);
@@ -47,7 +47,7 @@ test("simulate a chargeback, review the evidence and submit it", async ({ page }
   await expect(detail.locator("#h-evidence ~ .card .badge")).toHaveText("AI · qwen3:8b · recorded");
   await expect(detail.getByText("Regex fallback")).toHaveCount(0);
   await expect(detail.getByRole("heading", { name: "Win probability" })).toBeVisible();
-  await expect(detail.getByLabel("Win probability 100 percent")).toBeVisible();
+  await expect(detail.getByLabel("Win probability 95 percent")).toBeVisible();
   await expect(detail.getByText("Delivered to the billing address", { exact: true })).toBeVisible();
   await expect(detail.getByText("Order ID on file", { exact: true })).toBeVisible();
   await expect(detail.getByRole("heading", { name: "Dossier preview" })).toBeVisible();

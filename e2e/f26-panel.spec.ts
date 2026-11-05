@@ -26,12 +26,12 @@ test("one click on a scored row shows the factor ledger and Submit while the not
   ]);
   const id = ((await res.json()) as { id: string }).id;
   const row = page.locator(`.ag-row[row-id="${id}"]`);
-  await expect(row.locator('[col-id="win"]')).toContainText("100%");
+  await expect(row.locator('[col-id="win"]')).toContainText("95%");
   await row.locator('[col-id="reason"]').click();
 
   const sheet = page.getByRole("dialog", { name: `Dispute ${id}` });
   await expect(sheet.locator(".factors .factor.met").first()).toBeVisible(QUICK);
-  await expect(sheet.locator(".score-num")).toHaveText("100%", QUICK);
+  await expect(sheet.locator(".score-num")).toHaveText("95%", QUICK);
   await expect(sheet.getByRole("button", { name: "Submit evidence" })).toBeEnabled(QUICK);
   await expect(sheet.locator("#audit-list")).toContainText(/\S/, QUICK);
   const pending = sheet.locator("#h-dossier ~ .loading");

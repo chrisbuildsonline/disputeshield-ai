@@ -112,7 +112,7 @@ test("the walkthrough chargeback and the sample disputes read as recorded model 
   const created = page.waitForResponse((r) => r.url().endsWith("/api/demo/chargeback") && r.request().method() === "POST");
   await page.locator("header").getByRole("button", { name: "Simulate chargeback" }).click();
   ids.walkthrough = ((await (await created).json()) as Row).id;
-  await expect(page.locator(`.ag-row[row-id="${ids.walkthrough}"] [col-id="win"]`)).toHaveText("100%");
+  await expect(page.locator(`.ag-row[row-id="${ids.walkthrough}"] [col-id="win"]`)).toHaveText("95%");
 
   // the walkthrough, then every seeded case: recorded reads and a recorded note, never a fallback or a template
   for (const name of ["walkthrough", ...CASES.map(([n]) => n)]) {

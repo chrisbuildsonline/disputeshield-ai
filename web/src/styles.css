@@ -2004,6 +2004,7 @@ kbd {
 
   #kpi-link-id {
     display: block;
+    font-size: 12px; /* 13px ran ~7px past the card; 12px fits whole */
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;

@@ -53,7 +53,33 @@ for (const [w, h] of [[1440, 1200], [375, 812]] as const) {
     const d = await deadlineLine(page);
     expect(d.text).toContain(dueId);
     expect(d.scroll).toBeLessThanOrEqual(d.client + 1);
-    // the phone layout is owned by f25 (id on its own unbroken line), so only desktop checks the id box
-    if (w > 700) expect(d.idScroll).toBeLessThanOrEqual(d.idClient + 1);
+    expect(d.idScroll).toBeLessThanOrEqual(d.idClient + 1);
   });
 }
+
+test("375: the phone id is whole, on one line, no page overflow", async ({ page, request }) => {
+  const dueId = await seeded(page, request, 375, 812);
+  const m = await page.evaluate(() => {
+    const id = document.querySelector<HTMLElement>("#kpi-link-id")!;
+    const cs = getComputedStyle(id);
+    const de = document.documentElement;
+    return {
+      text: id.textContent!.trim(),
+      idScroll: id.scrollWidth,
+      idClient: id.clientWidth,
+      height: id.getBoundingClientRect().height,
+      lineHeight: parseFloat(cs.lineHeight) || parseFloat(cs.fontSize) * 1.5,
+      ws: cs.whiteSpace,
+      fontPx: parseFloat(cs.fontSize),
+      pageScroll: de.scrollWidth,
+      pageClient: de.clientWidth,
+    };
+  });
+  expect(m.text).toBe(dueId);
+  expect(m.idScroll, "id ellipsized").toBeLessThanOrEqual(m.idClient);
+  expect(m.ws).toBe("nowrap");
+  expect(m.height, "one line").toBeLessThanOrEqual(m.lineHeight + 1);
+  expect(m.fontPx).toBeGreaterThanOrEqual(12);
+  expect(m.pageScroll, "page overflow").toBeLessThanOrEqual(m.pageClient);
+  await page.screenshot({ path: `${SHOTS}/f35-deadline-375.png` });
+});

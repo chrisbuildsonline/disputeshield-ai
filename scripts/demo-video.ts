@@ -367,34 +367,37 @@ for (let tryNo = 1; ; tryNo++) {
     }
 
     const slide = (s: Parameters<typeof slideHtml>[1]) => slideHtml(pack, s);
+    // the opening names the product and says what it is, next to the real console (the README hero shot, cut to 16:9);
+    // two more screens that are not the app: the pipeline as a flow, the tests as a statement
+    const hero = join(TMP, 'hero.png');
+    if (Bun.spawnSync(['ffmpeg', '-y', '-v', 'error', '-i', join(ROOT, 'docs/screenshots/hero.png'), '-vf', 'crop=1440:810:0:0', hero]).exitCode) throw new Error('could not crop docs/screenshots/hero.png');
     const TITLE = slide({
-      eyebrow: 'Chargeback defense',
+      kind: 'title',
+      eyebrow: 'PayPal chargeback defense',
       title: 'DisputeShield AI',
-      lead: 'Win the PayPal disputes you should win. Settle the rest.',
-      cards: [
-        { kicker: 'The problem', title: 'Lost by default', body: 'An unanswered PayPal dispute costs the sale plus a fee, even when the parcel arrived.' },
-        { kicker: 'Who it is for', title: 'Small online shops', body: 'Sellers who ship real parcels and have no team to chase chargebacks.' },
-        { kicker: 'What it does', title: 'Reads, scores, drafts', body: 'Local AI reads the receipt. Fixed rules score the case. You decide.' },
-      ],
+      accent: 'AI',
+      lead: 'Answers PayPal disputes for small online shops: it reads the delivery proof, scores the case, drafts the reply.',
+      chips: ['PayPal Disputes + Invoicing APIs', 'Local AI: qwen3:8b on Ollama', 'You make the final call'],
+      image: `data:image/png;base64,${readFileSync(hero).toString('base64')}`,
     });
     const HOW = slide({
+      kind: 'flow',
       eyebrow: 'How it works',
       title: 'Local AI reads. Plain arithmetic decides.',
       lead: 'FastAPI and an AG Grid console behind an operator token, in Docker.',
-      cards: [
-        { kicker: 'PayPal', title: 'Disputes and Invoicing', body: 'Signed webhooks, provide-evidence, and draft invoices in the sandbox.' },
-        { kicker: 'Local AI', title: 'qwen3:8b on Ollama', body: 'The default model reads PDFs and drafts the note. Claude is optional.' },
-        { kicker: 'Fixed rules', title: 'Same proof, same score', body: 'Points for each proof found, capped at 95%. The model never sets it.' },
+      steps: [
+        { title: 'Signed webhook', body: 'PayPal sends the dispute. The signature is checked before anything runs.' },
+        { title: 'Local AI reads', body: 'qwen3:8b on Ollama pulls the facts from the PDF. Claude optional, a plain parser as the fallback.' },
+        { title: 'Fixed rules score', body: 'Points for each proof found, capped at 95%. Same evidence, same number.' },
+        { title: 'You decide', body: 'Submit the dossier to PayPal, or settle with a refund offer.' },
       ],
     });
     const TESTS = slide({
+      kind: 'statement',
       eyebrow: 'Run just now',
-      title: 'Tested before filming',
-      lead: 'Run by this script, right before the recording.',
-      cards: [
-        { kicker: 'pytest', title: `${passed} passed`, body: 'API, scoring, guards and the demo flow. The live-model tests wait for a quiet host.' },
-        { kicker: 'Types', title: '0 errors', body: 'tsc on the console and the scripts, strict mypy on the app and the tests.' },
-      ],
+      title: `${passed} tests passed, minutes before this recording.`,
+      accent: `${passed} tests passed,`,
+      lead: 'pytest without the live-model tests, then tsc and strict mypy: 0 type errors. This script runs them before it films.',
     });
     const OUTRO = slide({
       eyebrow: 'Who it is for',

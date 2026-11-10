@@ -40,7 +40,9 @@ const BED_UNDER = Number(process.env.DEMO_MUSIC_UNDER_DB || 14); // the music si
 const ZOOM_MS = 1150; // the stage's zoom transition, plus a frame
 const REHEARSE = process.argv.includes('--rehearse');
 const REMIX = process.argv.includes('--remix');
-const STEMS = join(OUT, REHEARSE ? 'stems-rehearsal' : 'stems');
+// --take: film only the real app (1080p, a cursor, no stage, no zoom, no slides) for an explainroo edit: out/take/
+const TAKE = process.argv.includes('--take');
+const STEMS = join(OUT, TAKE ? 'take' : REHEARSE ? 'stems-rehearsal' : 'stems');
 const out = join(OUT, REHEARSE ? 'rehearsal.mp4' : 'disputeshield-demo.mp4');
 type Clip = { file: string; ms: number };
 
@@ -133,6 +135,28 @@ if (REMIX) {
   await finish();
   process.exit(0);
 }
+
+// the cursor a take draws inside the app page (the stage draws its own): moves, clicks with a ripple, never takes a click
+const TAKE_CURSOR = `(() => {
+  if (window.__take) return;
+  const css = document.createElement('style');
+  css.textContent = '#take-cursor{position:fixed;left:0;top:0;width:24px;height:24px;z-index:2147483647;pointer-events:none;transform:translate(900px,820px);transition:transform .8s cubic-bezier(.45,0,.2,1),opacity .3s;filter:drop-shadow(0 3px 4px rgba(0,0,0,.35))}#take-cursor.off{opacity:0}#take-cursor svg{transition:transform .12s}#take-cursor.down svg{transform:scale(.82)}.take-ripple{position:fixed;width:44px;height:44px;margin:-22px 0 0 -22px;border-radius:50%;border:2px solid #B84A27;pointer-events:none;z-index:2147483646;animation:take-r .6s ease-out forwards}@keyframes take-r{from{opacity:.9;transform:scale(.3)}to{opacity:0;transform:scale(1.4)}}';
+  document.head.appendChild(css);
+  const cur = document.createElement('div');
+  cur.id = 'take-cursor'; cur.className = 'off';
+  cur.innerHTML = '<svg viewBox="0 0 24 24" width="24" height="24"><path d="M4 2.5v17.2l4.6-4.3 2.9 6.4 3-1.4-2.9-6.3h6.3z" fill="#fff" stroke="#111" stroke-width="1.5" stroke-linejoin="round"/></svg>';
+  document.body.appendChild(cur);
+  let pos = { x: 900, y: 820 };
+  window.__take = {
+    cursor(x, y) { cur.classList.remove('off'); pos = { x, y }; cur.style.transform = 'translate(' + (x - 5) + 'px,' + (y - 3) + 'px)'; },
+    hideCursor() { cur.classList.add('off'); },
+    click() {
+      cur.classList.add('down'); setTimeout(() => cur.classList.remove('down'), 160);
+      const r = document.createElement('div'); r.className = 'take-ripple'; r.style.left = pos.x + 'px'; r.style.top = pos.y + 'px';
+      document.body.appendChild(r); setTimeout(() => r.remove(), 700); setTimeout(() => cur.classList.add('off'), 1100);
+    },
+  };
+})()`;
 
 // ---- 1. gates: the offline suite and the type checks (the live model and sandbox tests need a quiet host; the video itself proves those paths) ----
 console.log('running the gates...');
@@ -271,6 +295,8 @@ const cuts: { from: number; to: number }[] = [];
 let endMs = 0;
 let t0 = 0;
 let frames: Frame[] = [];
+// a take's zoom targets: when (capture seconds) the stage would have zoomed, and onto what (app CSS px; null = the whole app)
+const takeFocus: { t: number; rect: { x: number; y: number; w: number; h: number } | null; max: number }[] = [];
 for (let tryNo = 1; ; tryNo++) {
   const REC = join(TMP, `rec-${tryNo}`);
   mkdirSync(REC, { recursive: true });
@@ -413,9 +439,15 @@ for (let tryNo = 1; ; tryNo++) {
 
     // ---- 7. filming, on the 1920x1080 stage: the console runs in the browser window's iframe ----
     browser = await chromium.launch();
-    const page: Page = await browser.newPage({ viewport: { width: 1920, height: 1080 }, colorScheme: 'light' });
-    await page.setContent(stageHtml(pack, { url: `localhost:${portA}` }), { waitUntil: 'load' });
-    const app = page.frameLocator('#app');
+    // the stage films a 1920x1080 page with the app in an iframe; a take films the app itself at 1.5x (1920x1080 frames)
+    const page: Page = TAKE
+      ? await browser.newPage({ viewport: { width: 1280, height: 720 }, deviceScaleFactor: 1.5, colorScheme: 'light' })
+      : await browser.newPage({ viewport: { width: 1920, height: 1080 }, colorScheme: 'light' });
+    if (!TAKE) await page.setContent(stageHtml(pack, { url: `localhost:${portA}` }), { waitUntil: 'load' });
+    type Root = Pick<Page, 'locator' | 'getByText' | 'getByRole'>;
+    const app: Root = TAKE ? page : (page.frameLocator('#app') as unknown as Root);
+    takeFocus.length = 0; // a refilmed take starts its zoom list again
+    const focusLog = takeFocus;
     const errors: string[] = [];
     page.on('console', (m) => { if (m.type() === 'error') errors.push(`${m.type()}: ${m.text()}`); });
     page.on('pageerror', (e) => errors.push(`pageerror: ${e.message}`));
@@ -424,8 +456,9 @@ for (let tryNo = 1; ; tryNo++) {
     const now = () => Date.now() - t0;
     let onSlide = true;
 
+    // in a take only the cursor exists (window.__take, inside the app); captions, zoom and slides are explainroo's job
     const stage = (fn: string, ...args: unknown[]) =>
-      page.evaluate(({ fn, args }) => (window as unknown as { stage: Record<string, (...a: unknown[]) => unknown> }).stage[fn](...args), { fn, args });
+      page.evaluate(({ fn, args, take }) => (window as unknown as Record<string, Record<string, (...a: unknown[]) => unknown> | undefined>)[take ? '__take' : 'stage']?.[fn]?.(...args), { fn, args, take: TAKE });
     /** Plays a line. Each step runs at its share of the line (0..1); the line always plays out in full. */
     async function narrate(key: Key, steps: [number, () => Promise<unknown>][] = []) {
       const c = N[key];
@@ -453,9 +486,11 @@ for (let tryNo = 1; ; tryNo++) {
     }
     /** Points the browser window at a console (behind a slide or in view) and waits for the grid. */
     async function openApp(base: string) {
-      await page.locator('#app').evaluate((f: HTMLIFrameElement, u) => { f.src = u; }, `${base}/#token=${TOKEN}`);
+      if (TAKE) await page.goto(`${base}/#token=${TOKEN}`);
+      else await page.locator('#app').evaluate((f: HTMLIFrameElement, u) => { f.src = u; }, `${base}/#token=${TOKEN}`);
       await app.getByText(/Disputes/).first().waitFor(WAIT);
       await app.locator('head').evaluate((h, css) => { const s = document.createElement('style'); s.textContent = css; h.appendChild(s); }, SPOT_CSS);
+      if (TAKE) await page.evaluate(TAKE_CURSOR);
       await stage('url', `localhost:${new URL(base).port}`);
     }
     async function enterApp() { // the window rises in while the next line starts
@@ -471,6 +506,7 @@ for (let tryNo = 1; ; tryNo++) {
           return { x, y, w: Math.min(innerWidth, b.right) - x, h: Math.min(innerHeight, b.bottom) - y };
         })
         : null;
+      if (TAKE) focusLog.push({ t: now() / 1000, rect: r, max });
       await stage('focus', r, max);
       await Bun.sleep(ZOOM_MS);
     }
@@ -522,7 +558,7 @@ for (let tryNo = 1; ; tryNo++) {
     await show(TITLE);
     await Bun.sleep(700);
     const appReady = openApp(A); // loads behind the title
-    await narrate('title');
+    if (!TAKE) await narrate('title');
     await appReady;
 
     // -- the console, Simulate chargeback --
@@ -595,6 +631,7 @@ for (let tryNo = 1; ; tryNo++) {
       }],
       [0.4, () => spot(panel.getByText('Demo mode: nothing was sent to PayPal').locator('..'), true)],
     ]);
+    if (TAKE) focusLog.push({ t: now() / 1000, rect: null, max: 1 });
     await stage('focus', null); // zoom out while the panel closes
     await panel.getByRole('button', { name: /Close/ }).dispatchEvent('click');
     await Bun.sleep(ZOOM_MS);
@@ -623,6 +660,7 @@ for (let tryNo = 1; ; tryNo++) {
     ]);
 
     // -- server B: demo mode off, sandbox keys, a real Invoicing v2 call --
+    if (TAKE) focusLog.push({ t: now() / 1000, rect: null, max: 1 });
     await stage('focus', null); // zoom out while server B loads
     const zoomedOut = Bun.sleep(ZOOM_MS);
     await openApp(B);
@@ -652,12 +690,14 @@ for (let tryNo = 1; ; tryNo++) {
 
     // -- how, tests, outro --
     await show(HOW);
-    await page.locator('#app').evaluate((f: HTMLIFrameElement) => { f.src = 'about:blank'; }); // the console stops polling under the slides
-    await narrate('how');
-    await show(TESTS);
-    await narrate('tests');
-    await show(OUTRO);
-    await narrate('outro');
+    if (!TAKE) await page.locator('#app').evaluate((f: HTMLIFrameElement) => { f.src = 'about:blank'; }); // the console stops polling under the slides
+    if (!TAKE) {
+      await narrate('how');
+      await show(TESTS);
+      await narrate('tests');
+      await show(OUTRO);
+      await narrate('outro');
+    }
     await Bun.sleep(1000);
 
     if (errors.length) throw new Error(`the console logged errors while filming:\n${errors.join('\n')}`);
@@ -688,6 +728,15 @@ const taken = writeConcat(frames, { t0, endMs, fps: 30, file: list });
 const pic = Bun.spawnSync(['ffmpeg', '-y', '-v', 'error', '-f', 'concat', '-safe', '0', '-i', list, '-vf', 'fps=30,scale=1920:1080:out_range=tv,format=yuv420p',
   '-t', taken.toFixed(3), '-an', '-c:v', 'libx264', '-crf', '16', '-preset', 'medium', '-g', '30', join(STEMS, 'capture.mp4')], { stderr: 'inherit' });
 if (pic.exitCode) throw new Error('ffmpeg could not encode the capture');
+if (TAKE) {
+  // what an explainroo edit needs: the take, each line's start in it (seconds), the cut spans and the zoom targets
+  const keys = Object.keys(LINES) as Key[];
+  for (const k of keys) copyFileSync(N[k].file, join(STEMS, 'voice', `${k}.wav`));
+  const lines = clips.map((c) => ({ line: keys.find((k) => N[k].file === c.file), at: c.at / 1000, seconds: N[keys.find((k) => N[k].file === c.file)!].ms / 1000 }));
+  writeFileSync(join(STEMS, 'take.json'), `${JSON.stringify({ seconds: taken, app: { w: 1280, h: 720 }, cuts: cutSecs, lines, focus: takeFocus }, null, 2)}\n`);
+  console.log(`take: ${join(STEMS, 'capture.mp4')} (${taken.toFixed(1)} s), ${lines.length} lines, ${takeFocus.length} zoom targets, voice files in ${join(STEMS, 'voice')}`);
+  process.exit(0);
+}
 const keys = Object.keys(LINES) as Key[];
 const lines = clips.map((c, i) => {
   const line = keys.find((k) => N[k].file === c.file) ?? `line${i}`;
